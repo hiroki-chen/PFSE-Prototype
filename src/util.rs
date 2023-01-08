@@ -25,8 +25,23 @@ pub fn write_file(path: &str, content: &[u8]) -> Result<()> {
     File::open(path)?.write_all(content)
 }
 
-/// Construct a histogram for a dataset [T] and return an ordered histogram vector.
-pub fn build_histogram<T>(dataset: &Vec<T>) -> Vec<HistType<T>>
+/// Construct an ordered histogram vector from raw histogram
+pub fn build_histogram_vec<T>(histogram: &HashMap<T, usize>) -> Vec<HistType<T>>
+where
+    T: Hash + Eq + Clone,
+{
+    // Convert histogram into vector that is ordered by frequency.
+    let mut histogram_vec = Vec::new();
+    histogram
+        .into_iter()
+        .for_each(|(key, &frequency)| histogram_vec.push((key.clone(), frequency)));
+    // Second, sort the vector in descending order.
+    histogram_vec.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1));
+    histogram_vec
+}
+
+/// Construct a raw histogram represented by the `HashMap`.
+pub fn build_histogram<T>(dataset: &[T]) -> HashMap<T, usize>
 where
     T: Hash + Eq + Clone,
 {
@@ -40,12 +55,20 @@ where
         };
     }
 
-    // Convert histogram into vector that is ordered by frequency.
-    let mut histogram_vec = Vec::new();
     histogram
-        .into_iter()
-        .for_each(|(key, frequency)| histogram_vec.push((key, frequency)));
-    // Second, sort the vector in descending order.
-    histogram_vec.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1));
-    histogram_vec
+}
+
+/// A helper function that computes the `i`-th value of the CDF, given a histogram and element number.
+pub fn compute_cdf<T>(index: usize, histogram: &Vec<HistType<T>>, num: usize) -> f64 {
+    if index >= histogram.len() {
+        println!("[-] Index {} out of bound!", index);
+        return 0f64;
+    }
+
+    let mut sum = 0f64;
+    for i in 0..index {
+        sum += (histogram.get(i).unwrap().1 as f64) / num as f64;
+    }
+
+    sum
 }

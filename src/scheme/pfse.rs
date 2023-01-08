@@ -7,7 +7,7 @@ use rand_core::OsRng;
 
 use crate::{
     fse::{FrequencySmoothing, HistType, PartitionFrequencySmoothing},
-    util::build_histogram,
+    util::{build_histogram, build_histogram_vec},
 };
 
 #[derive(Debug, Clone)]
@@ -83,6 +83,8 @@ where
     p_transform: (f64, f64),
     /// The upper-bound of the advantage a MLE attacker.
     p_mle_upper_bound: f64,
+    /// The threshold for K_{i} = \frac{k'_i}{k''_i}.
+    p_threshold: f64,
     /// The number of messages.
     message_num: usize,
     /// Partitions.
@@ -109,6 +111,10 @@ where
         self.p_transform
     }
 
+    pub fn get_param_threshold(&self) -> f64 {
+        self.p_threshold
+    }
+
     pub fn get_partition_num(&self) -> usize {
         self.partitions.len()
     }
@@ -126,11 +132,7 @@ where
     /// If factors are chosen such that they do not conform to the constraint, the program need to re-sample a new pair
     /// to ensure that the upper-bound of the MLE advantage can always be satisfied, or you can simply abort the execution.
     fn check_ki(&self, ki: f64) -> bool {
-        let threadhold = (self.p_mle_upper_bound * self.message_num as f64)
-            / (self.p_partition * self.p_scale * self.get_partition_num() as f64);
-        println!("{}", threadhold);
-
-        ki <= threadhold
+        ki <= self.p_threshold
     }
 }
 
@@ -147,6 +149,7 @@ where
             p_transform: (0f64, 0f64),
             p_mle_upper_bound: 0f64,
             p_scale: 0f64,
+            p_threshold: 0f64,
             message_num: 0usize,
             partitions: Vec::new(),
         }
@@ -182,7 +185,7 @@ where
                 let mut message_byte = Vec::new();
                 message_byte.extend_from_slice(item.to_string().as_bytes());
                 message_byte.extend_from_slice(&i.to_le_bytes());
-                let nonce = Nonce::from_slice(b"0");
+                let nonce = Nonce::from_slice(&[0u8; 12]);
 
                 // Encrypt the message.
                 // ciphertext = AES.encrypt(key, message || idx, 0);
@@ -216,7 +219,7 @@ where
                 return None;
             }
         };
-        let nonce = Nonce::from_slice(b"0");
+        let nonce = Nonce::from_slice(&[0u8; 12]);
         let mut plaintext = match aes.decrypt(nonce, ciphertext) {
             Ok(plaintext) => plaintext,
             Err(e) => {
@@ -244,13 +247,16 @@ where
         self.is_ready = true;
     }
 
-    fn partition(&mut self, input: &Vec<T>, partition_func: &dyn Fn(f64, usize) -> f64) {
+    fn partition(&mut self, input: &[T], partition_func: &dyn Fn(f64, usize) -> f64) {
         if !self.ready() {
             panic!("[-] Context not ready.");
         }
 
         self.message_num = input.len();
-        let mut histogram_vec = build_histogram(input);
+        let mut histogram_vec = {
+            let histogram = build_histogram(input);
+            build_histogram_vec(&histogram)
+        };
         // Partition this according to the function f(x).
         let mut i = 0usize;
         // The group number.
@@ -312,13 +318,19 @@ where
             i = j;
         }
 
+        // Set threshold.
+        self.p_threshold = (self.p_mle_upper_bound * self.message_num as f64)
+            / (self.p_partition * self.p_scale * self.get_partition_num() as f64);
+
         println!("{:#?}\n{:?}", self.partitions, histogram_vec);
     }
 
     fn transform(&mut self) {
         for partition in self.partitions.iter() {
             // FIXME: How to sample them?
+            // k'_i
             let k_prime_one = 0.25;
+            // k''_i
             let k_prime_second = 5.0;
 
             if !self.check_ki(k_prime_one / k_prime_second) {

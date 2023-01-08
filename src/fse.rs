@@ -24,7 +24,7 @@ pub trait PartitionFrequencySmoothing<T>: FrequencySmoothing<T> {
 
     /// Given a vector of `T` and a function closure as the partitioning function, this function constructs the partitioned vectors
     /// containing tuples `(T, usize)` (T and its count).
-    fn partition(&mut self, input: &Vec<T>, partition_func: &dyn Fn(f64, usize) -> f64);
+    fn partition(&mut self, input: &[T], partition_func: &dyn Fn(f64, usize) -> f64);
 
     /// Transform each partition by duplicating and smoothing each message.
     fn transform(&mut self);
