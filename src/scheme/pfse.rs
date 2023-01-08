@@ -161,15 +161,16 @@ where
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&mut self, message: &T) -> Vec<Vec<u8>> {
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
 
@@ -188,10 +189,11 @@ where
                 let ciphertext = match aes.encrypt(nonce, message_byte.as_slice()) {
                     Ok(ciphertext) => ciphertext,
                     Err(e) => {
-                        panic!(
+                        println!(
                             "[-] Error encrypting the message due to {:?}.",
                             e.to_string()
                         );
+                        return None;
                     }
                 };
                 ciphertexts.push(ciphertext);
@@ -200,32 +202,34 @@ where
             println!("[-] The requested message does not exists, skip.");
         }
 
-        ciphertexts
+        Some(ciphertexts)
     }
 
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Vec<u8> {
+    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>> {
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
         let nonce = Nonce::from_slice(b"0");
         let mut plaintext = match aes.decrypt(nonce, ciphertext) {
             Ok(plaintext) => plaintext,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error decrypting the message due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
         plaintext.truncate(plaintext.len() - std::mem::size_of::<usize>());
 
-        plaintext
+        Some(plaintext)
     }
 }
 
@@ -271,11 +275,11 @@ where
                 // Split j-th message.
                 let message_first_part = (
                     histogram_vec[j - 1].0.clone(),
-                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).ceil() as usize,
+                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).round() as usize,
                 );
                 let message_second_part = (
                     histogram_vec[j - 1].0.clone(),
-                    (histogram_vec[j - 1].1 as f64 * diff).floor() as usize,
+                    (histogram_vec[j - 1].1 as f64 * diff).round() as usize,
                 );
 
                 histogram_vec[j - 1] = message_first_part;

@@ -10,11 +10,11 @@ pub trait FrequencySmoothing<T> {
     /// Given a security parameter, generate a secret key.
     fn key_generate(&mut self);
 
-    /// Encrypt the message and return the ciphertext vector.
-    fn encrypt(&mut self, message: &T) -> Vec<Vec<u8>>;
+    /// Encrypt the message and return the ciphertext vector. Return `None` if error occurrs.
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>>;
 
-    /// Decrypt the ciphertext and return the plaintext.
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Vec<u8>;
+    /// Decrypt the ciphertext and return the plaintext. Return `None` if error occurrs.
+    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>>;
 }
 
 /// This trait is derived from [`FrequencySmoothing`] for partition-based FSE schemes.

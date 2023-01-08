@@ -11,6 +11,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
 use crate::{fse::FrequencySmoothing, util::build_histogram};
@@ -46,10 +47,10 @@ where
     }
 
     /// Encode the message and returns one of the homophones from its homophone set.
-    fn encode(&mut self, message: &T) -> Vec<u8>;
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>>;
 
     /// Decode the message. Note we do not return `T` directly.
-    fn decode(&mut self, message: &[u8]) -> Vec<u8>;
+    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>>;
 }
 
 /// The encoder for IHBE.
@@ -104,11 +105,17 @@ where
         }
     }
 
-    fn encode(&mut self, message: &T) -> Vec<u8> {
-        todo!()
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
+        match self.local_table.get(message) {
+            Some(interval) => {
+                let homophone = Uniform::new(interval.start, interval.end).sample(&mut OsRng);
+                Some(homophone.to_le_bytes().to_vec())
+            }
+            None => None,
+        }
     }
 
-    fn decode(&mut self, message: &[u8]) -> Vec<u8> {
+    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
         todo!()
     }
 }
@@ -117,11 +124,11 @@ impl<T> HomophoneEncoder<T> for EncoderBHE
 where
     T: Hash + ToString + Eq + Debug + Clone,
 {
-    fn encode(&mut self, message: &T) -> Vec<u8> {
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
         todo!()
     }
 
-    fn decode(&mut self, message: &[u8]) -> Vec<u8> {
+    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
         todo!()
     }
 }
@@ -138,6 +145,12 @@ where
             encoder,
         }
     }
+
+    /// Initialize the struct.
+    pub fn initialize(&mut self, messages: &Vec<T>) {
+        // Initialize the encoder.
+        self.encoder.initialize(messages, self.advantage);
+    }
 }
 
 impl<T> FrequencySmoothing<T> for ContextLPFSE<T>
@@ -148,35 +161,43 @@ where
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&mut self, message: &T) -> Vec<Vec<u8>> {
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
 
-        let homophone = self.encoder.encode(message);
+        let homophone = match self.encoder.encode(message) {
+            Some(h) => h,
+            None => {
+                println!("[-] The requested message does not exist.");
+                return None;
+            }
+        };
         let nonce = Nonce::from_slice(b"0");
         let ciphertext = match aes.encrypt(nonce, homophone.as_slice()) {
             Ok(ciphertext) => ciphertext,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error encrypting the message due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
         ciphertexts.push(ciphertext);
 
-        ciphertexts
+        Some(ciphertexts)
     }
 
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Vec<u8> {
+    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>> {
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
