@@ -52,7 +52,7 @@ mod test {
             1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1, 2, 3, 4, 2, 2, 3, 4, 4, 2, 2, 4, 5, 1, 2, 3,
         ];
         vec.sort();
-        let mut ctx = ContextLPFSE::<i32>::new(2f64.powf(-10 as f64), Box::new(EncoderIHBE::new()));
+        let mut ctx = ContextLPFSE::<i32>::new(2f64.powf(-10_f64), Box::new(EncoderIHBE::new()));
         ctx.key_generate();
         ctx.initialize(&vec);
 
@@ -87,7 +87,7 @@ mod test {
             1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1, 2, 3, 4, 2, 2, 3, 4, 4, 2, 2, 4, 5, 1, 2, 3,
         ];
         vec.sort();
-        let mut ctx = ContextLPFSE::new(2f64.powf(-10 as f64), Box::new(EncoderBHE::new()));
+        let mut ctx = ContextLPFSE::new(2f64.powf(-10_f64), Box::new(EncoderBHE::new()));
         ctx.key_generate();
         ctx.initialize(&vec);
 

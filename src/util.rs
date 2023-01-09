@@ -33,7 +33,7 @@ where
     // Convert histogram into vector that is ordered by frequency.
     let mut histogram_vec = Vec::new();
     histogram
-        .into_iter()
+        .iter()
         .for_each(|(key, &frequency)| histogram_vec.push((key.clone(), frequency)));
     // Second, sort the vector in descending order.
     histogram_vec.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1));

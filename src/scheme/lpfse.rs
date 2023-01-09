@@ -115,21 +115,17 @@ where
 
                     scale_factor = (1.0 - cur_frequency) / (1.0 - pow2_rplus1);
                 }
+            } else if is_big_enough {
+                histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
+            } else if cur_frequency >= pow2_r * scale_factor {
+                is_big_enough = true;
+                histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
             } else {
-                if is_big_enough {
-                    histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
-                } else {
-                    if cur_frequency >= pow2_r * scale_factor {
-                        is_big_enough = true;
-                        histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
-                    } else {
-                        let cdf_prev = compute_cdf(i, histogram, message_num);
-                        histogram[i].1 = ((histogram[i].1 as f64) * pow2_r).ceil() as usize;
-                        let cdf_cur = compute_cdf(i, histogram, message_num);
+                let cdf_prev = compute_cdf(i, histogram, message_num);
+                histogram[i].1 = ((histogram[i].1 as f64) * pow2_r).ceil() as usize;
+                let cdf_cur = compute_cdf(i, histogram, message_num);
 
-                        scale_factor = (1.0 - cdf_prev) / (1.0 - cdf_cur);
-                    }
-                }
+                scale_factor = (1.0 - cdf_prev) / (1.0 - cdf_cur);
             }
         }
     }
