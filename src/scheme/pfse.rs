@@ -1,20 +1,40 @@
 //! This module implements the partition-based frequency smoothing encryption scheme.
 
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{collections::HashMap, f64::consts::E, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use rand_core::OsRng;
 
 use crate::{
-    fse::{FrequencySmoothing, HistType, PartitionFrequencySmoothing},
+    fse::{FreqType, FrequencySmoothing, HistType, PartitionFrequencySmoothing},
     util::{build_histogram, build_histogram_vec},
 };
+
+/// This struct defines the parameter pair that can be used to transform each partition `G_i`.
+///
+/// Formally speaking, K is such that
+/// ```tex
+///   K = \frac{k''_i}{k'_i} \leq threshold.
+/// ```
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct K {
+    k_one: f64,
+    k_second: f64,
+}
+
+impl K {
+    pub fn new(k_one: f64, k_second: f64) -> Self {
+        Self { k_one, k_second }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PartitionMeta {
     index: usize,
     cumulative_frequency: f64,
+    /// The number of messages within this partition.
+    message_num: usize,
 }
 
 #[derive(Clone)]
@@ -31,8 +51,21 @@ impl<T> Partition<T>
 where
     T: Debug + Clone,
 {
-    pub fn new(inner: Vec<HistType<T>>, meta: PartitionMeta) -> Self {
+    pub fn new(inner: Vec<HistType<T>>, index: usize, cumulative_frequency: f64) -> Self {
+        let meta = PartitionMeta {
+            index,
+            cumulative_frequency,
+            message_num: inner.iter().map(|elem| elem.1).sum(),
+        };
         Self { inner, meta }
+    }
+
+    /// Convert a histogram `Vec<HistType<T>>` into a frequency table `Vec<FreqType<T>>`. See [`FreqType`] and [`HistType`].
+    pub fn build_frequency_table(&self) -> Vec<FreqType<T>> {
+        self.inner
+            .iter()
+            .map(|elem| (elem.0.clone(), elem.1 as f64 / self.meta.message_num as f64))
+            .collect()
     }
 }
 
@@ -132,8 +165,11 @@ where
     ///
     /// If factors are chosen such that they do not conform to the constraint, the program need to re-sample a new pair
     /// to ensure that the upper-bound of the MLE advantage can always be satisfied, or you can simply abort the execution.
-    fn check_ki(&self, ki: f64) -> bool {
-        ki <= self.p_threshold
+    fn check_ki(&self, ki: &K) -> bool {
+        println!("Checking {:?}", ki);
+
+        // Control the precision of comparison so that we won't abort on "close" variables.
+        (ki.k_one / ki.k_second - self.p_threshold).abs() <= 2f64.powf(-10_f64)
     }
 }
 
@@ -307,10 +343,8 @@ where
                 histogram_vec[j - 1] = message_first_part;
                 self.partitions.push(Partition::new(
                     histogram_vec[i..j].to_vec().clone(),
-                    PartitionMeta {
-                        index: group,
-                        cumulative_frequency: value,
-                    },
+                    group,
+                    value,
                 ));
 
                 if message_second_part.1 != 0 {
@@ -323,10 +357,8 @@ where
             } else {
                 self.partitions.push(Partition::new(
                     histogram_vec[i..j].to_vec().clone(),
-                    PartitionMeta {
-                        index: group,
-                        cumulative_frequency: value,
-                    },
+                    group,
+                    value,
                 ));
             }
 
@@ -339,17 +371,27 @@ where
             / (self.p_partition * self.p_scale * self.get_partition_num() as f64);
 
         println!("{:#?}\n{:?}", self.partitions, histogram_vec);
+        println!("threshold = {}", self.p_threshold);
     }
 
     fn transform(&mut self) {
-        for partition in self.partitions.iter() {
-            // FIXME: How to sample them?
-            // k'_i
-            let k_prime_one = 0.25;
-            // k''_i
-            let k_prime_second = 5.0;
+        for (index, partition) in self.partitions.iter().enumerate() {
+            // Build a frequency table for this partition.
+            // let frequency_table = partition.build_frequency_table();
 
-            if !self.check_ki(k_prime_one / k_prime_second) {
+            // FIXME: It this correct?
+            // There are some constraints that should be taken into consideration.
+            // 1. \frac{1}{k''_{i} \beta_{i} k_{0}} < 1 => k''_{i} > \frac{1}{\beta_{i} k_{0}}.
+            // 2. \frac{1}{n_i} < 1.
+            // k'_i
+            let k_prime_one =
+                (self.p_mle_upper_bound * self.message_num as f64 * E.powf(index as f64 + 1.0))
+                    / (self.p_partition * self.p_scale);
+            // k''_i
+            let k_prime_second = self.partitions.len() as f64 * E.powf(index as f64 + 1.0);
+            let k_i = K::new(k_prime_one, k_prime_second);
+
+            if !self.check_ki(&k_i) {
                 panic!("[-] This pair of parameters is invalid.");
             }
 

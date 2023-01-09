@@ -3,6 +3,7 @@
 use std::f64::consts::E;
 
 pub type HistType<T> = (T, usize);
+pub type FreqType<T> = (T, f64);
 
 /// This trait implements the interfaces for any FSE-like schemes.
 
