@@ -3,6 +3,7 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+use base64::{engine::general_purpose, Engine};
 use rand_core::OsRng;
 
 use crate::{
@@ -199,7 +200,12 @@ where
                         return None;
                     }
                 };
-                ciphertexts.push(ciphertext);
+                // Encode with base64.
+                ciphertexts.push(
+                    general_purpose::STANDARD_NO_PAD
+                        .encode(ciphertext)
+                        .into_bytes(),
+                );
             }
         } else {
             println!("[-] The requested message does not exists, skip.");
@@ -220,7 +226,17 @@ where
             }
         };
         let nonce = Nonce::from_slice(&[0u8; 12]);
-        let mut plaintext = match aes.decrypt(nonce, ciphertext) {
+        let decoded_ciphertext = match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
+            Ok(v) => v,
+            Err(e) => {
+                println!(
+                    "[-] Error decoding the base64 string due to {:?}.",
+                    e.to_string()
+                );
+                return None;
+            }
+        };
+        let mut plaintext = match aes.decrypt(nonce, decoded_ciphertext.as_slice()) {
             Ok(plaintext) => plaintext,
             Err(e) => {
                 println!(
@@ -266,8 +282,8 @@ where
             let mut j = i;
             // Cumulative sum, i.e. \sum_{k \in [i, j]} f_{D}(m_{k}) = sum.
             let mut sum = 0f64;
-            // Calculate \lambda * e^{-\lambda group}.
-            let value = partition_func(self.p_partition, group);
+            // Calculate \lambda * e^{-\lambda group} * k_{0}.
+            let value = partition_func(self.p_partition, group) * self.p_scale;
 
             while j < histogram_vec.len() && sum < value {
                 sum += histogram_vec[j].1 as f64 / self.message_num as f64;

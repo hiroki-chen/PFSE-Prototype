@@ -32,7 +32,14 @@ mod test {
         ctx.set_params(1.0, 1.0, 0.01);
         ctx.partition(&vec, &exp);
         ctx.transform();
-        println!("{:?}", ctx.encrypt(&1));
+
+        let ciphertexts = ctx
+            .encrypt(&1)
+            .unwrap()
+            .into_iter()
+            .map(|elem| String::from_utf8(elem).unwrap())
+            .collect::<Vec<String>>();
+        println!("{:?}", ciphertexts);
     }
 
     #[test]
@@ -41,10 +48,66 @@ mod test {
             fse::FrequencySmoothing,
             lpfse::{ContextLPFSE, EncoderIHBE},
         };
-        let vec = vec![1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1, 2, 3, 4, 2, 2, 3];
+        let mut vec = vec![
+            1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1, 2, 3, 4, 2, 2, 3, 4, 4, 2, 2, 4, 5, 1, 2, 3,
+        ];
+        vec.sort();
         let mut ctx = ContextLPFSE::<i32>::new(2f64.powf(-10 as f64), Box::new(EncoderIHBE::new()));
         ctx.key_generate();
         ctx.initialize(&vec);
-        println!("{:02x?}", ctx.encrypt(&1));
+
+        let mut ciphertexts = Vec::new();
+        for message in vec.iter() {
+            let ciphertext = ctx.encrypt(message).unwrap().remove(0);
+            ciphertexts.push(String::from_utf8(ciphertext).unwrap());
+        }
+
+        let mut plaintexts = Vec::new();
+        for ciphertext in ciphertexts.iter() {
+            let plaintext = ctx.decrypt(ciphertext.as_bytes()).unwrap();
+            plaintexts.push(
+                String::from_utf8(plaintext)
+                    .unwrap()
+                    .parse::<i32>()
+                    .unwrap(),
+            );
+        }
+
+        assert_eq!(plaintexts, vec);
+    }
+
+    #[test]
+    fn test_bhe() {
+        use crate::{
+            fse::FrequencySmoothing,
+            lpfse::{ContextLPFSE, EncoderBHE},
+        };
+
+        let mut vec = vec![
+            1, 1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1, 2, 3, 4, 2, 2, 3, 4, 4, 2, 2, 4, 5, 1, 2, 3,
+        ];
+        vec.sort();
+        let mut ctx = ContextLPFSE::new(2f64.powf(-10 as f64), Box::new(EncoderBHE::new()));
+        ctx.key_generate();
+        ctx.initialize(&vec);
+
+        let mut ciphertexts = Vec::new();
+        for message in vec.iter() {
+            let ciphertext = ctx.encrypt(message).unwrap().remove(0);
+            ciphertexts.push(String::from_utf8(ciphertext).unwrap());
+        }
+
+        let mut plaintexts = Vec::new();
+        for ciphertext in ciphertexts.iter() {
+            let plaintext = ctx.decrypt(ciphertext.as_bytes()).unwrap();
+            plaintexts.push(
+                String::from_utf8(plaintext)
+                    .unwrap()
+                    .parse::<i32>()
+                    .unwrap(),
+            );
+        }
+
+        assert_eq!(plaintexts, vec);
     }
 }

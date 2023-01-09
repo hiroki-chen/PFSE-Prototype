@@ -11,6 +11,7 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+use base64::{engine::general_purpose, Engine};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
@@ -91,6 +92,8 @@ where
     /// This function applies Variant 2 on IHBE strategy which modifies how intervals (homophone sets) are allocated
     /// in such a way thatsmaller encoding bitlengths are possible. This is because some distributions can yield
     /// prohibitively large values of r_{min-1} if f_{D}(m_{1})is relatively tiny.
+    ///
+    /// TODO: Check it.
     fn adjust_distribution(
         &mut self,
         histogram: &mut Vec<HistType<T>>,
@@ -211,18 +214,20 @@ where
         match self.local_table.get(message) {
             Some(interval) => {
                 let homophone = Uniform::new(interval.start, interval.end).sample(&mut OsRng);
-                Some(homophone.to_le_bytes().to_vec())
+
+                // Variant 1: Append the homophone to the message.
+                let mut encoded_message = message.to_string().into_bytes();
+                encoded_message.extend_from_slice(b"|");
+                encoded_message.extend_from_slice(&homophone.to_le_bytes());
+                Some(encoded_message)
             }
             None => None,
         }
     }
 
     fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
-        // TODO:
-        // 1. Traverse the local table.
-        // 2. Determine the interval where message resides.
-        // 3. Do a reverse mapping.
-        todo!()
+        // Simply strip the homophone from message.
+        Some(message[..message.len() - std::mem::size_of::<usize>() - 1].to_vec())
     }
 }
 
@@ -243,9 +248,16 @@ where
             .max_by(|lhs, rhs| lhs.1.cmp(rhs.1))
             .map(|(_, v)| *v)
             .unwrap();
-        let n = messages.len() as f64;
 
-        self.length = f64::log2(n / 4.0 * advantage * PI).ceil() as usize - 1;
+        let n = messages.len() as f64;
+        let log2 = f64::log2(n / ((2.0 * advantage).powf(2.0) * PI)).ceil() as usize;
+        self.length = match log2.checked_sub(1) {
+            Some(v) => v,
+            None => {
+                println!("[-] Invalid length: {}", log2);
+                return;
+            }
+        };
         self.width = most_frequent as f64 / (n * 2f64.powf(self.length as f64));
     }
 
@@ -259,6 +271,7 @@ where
                 // Construct m as m || t.
                 let mut encoded_message = Vec::new();
                 encoded_message.extend_from_slice(message.to_string().as_bytes());
+                encoded_message.extend_from_slice(b"|");
                 encoded_message.extend_from_slice(&homophone.to_le_bytes());
                 Some(encoded_message)
             }
@@ -268,10 +281,7 @@ where
 
     fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
         // Simply truncate the last l-bits.
-        let length = self.length.pow(2);
-        let decoded_message = message[..length].to_vec();
-
-        Some(decoded_message)
+        Some(message[..message.len() - std::mem::size_of::<u64>() - 1].to_vec())
     }
 }
 
@@ -333,7 +343,11 @@ where
                 return None;
             }
         };
-        ciphertexts.push(ciphertext);
+        ciphertexts.push(
+            general_purpose::STANDARD_NO_PAD
+                .encode(ciphertext)
+                .into_bytes(),
+        );
 
         Some(ciphertexts)
     }
@@ -350,13 +364,24 @@ where
         };
 
         let nonce = Nonce::from_slice(&[0u8; 12]);
-        let plaintext = match aes.decrypt(nonce, ciphertext) {
+        let decoded_plaintext = match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
+            Ok(v) => v,
+            Err(e) => {
+                println!(
+                    "[-] Error decoding the base64 string due to {:?}.",
+                    e.to_string()
+                );
+                return None;
+            }
+        };
+        let plaintext = match aes.decrypt(nonce, decoded_plaintext.as_slice()) {
             Ok(plaintext) => plaintext,
             Err(e) => {
-                panic!(
+                println!(
                     "[-] Error decrypting the message due to {:?}.",
                     e.to_string()
                 );
+                return None;
             }
         };
 
