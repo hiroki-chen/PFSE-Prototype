@@ -7,6 +7,8 @@ use std::{
     io::{BufRead, BufReader, Result, Write},
 };
 
+use csv::ReaderBuilder;
+
 use crate::fse::HistType;
 
 pub fn read_file(path: &str) -> Result<Vec<String>> {
@@ -17,6 +19,35 @@ pub fn read_file(path: &str) -> Result<Vec<String>> {
     for line in reader.lines() {
         strings.push(line?);
     }
+
+    Ok(strings)
+}
+
+/// Parse a CSV file and read the corresponding column.
+pub fn read_csv(path: &str, column_name: &str) -> Result<Vec<String>> {
+    let mut reader = ReaderBuilder::new().has_headers(true).from_path(path)?;
+
+    // Locate the target column.
+    let index = reader
+        .headers()
+        .unwrap()
+        .iter()
+        .enumerate()
+        .find(|&(_, str)| str == column_name)
+        .unwrap()
+        .0;
+    let strings = reader
+        .records()
+        .map(|elem| {
+            elem.unwrap()
+                .iter()
+                .enumerate()
+                .find(|&(i, _)| i == index)
+                .unwrap()
+                .1
+                .to_string()
+        })
+        .collect();
 
     Ok(strings)
 }

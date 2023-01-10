@@ -1,13 +1,16 @@
 //! This module mainly defines a trait called `FrequencySmoothing` that should be implemented for any struct that tries to act like `FSE`.
 
-use std::f64::consts::E;
+use std::{f64::consts::E, fmt::Debug, fs::File, io::Write};
 
 pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
 
 /// This trait implements the interfaces for any FSE-like schemes.
 
-pub trait FrequencySmoothing<T> {
+pub trait FrequencySmoothing<T>: Debug
+where
+    T: Debug,
+{
     /// Given a security parameter, generate a secret key.
     fn key_generate(&mut self);
 
@@ -16,10 +19,23 @@ pub trait FrequencySmoothing<T> {
 
     /// Decrypt the ciphertext and return the plaintext. Return `None` if error occurrs.
     fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>>;
+
+    /// Store the summary of the current context into a given file.
+    fn store(&self, path: &str) -> std::io::Result<()> {
+        let mut file = File::create(path)?;
+        write!(
+            &mut file,
+            "Summary of the current context is\n\t{:#?}",
+            self
+        )
+    }
 }
 
 /// This trait is derived from [`FrequencySmoothing`] for partition-based FSE schemes.
-pub trait PartitionFrequencySmoothing<T>: FrequencySmoothing<T> {
+pub trait PartitionFrequencySmoothing<T>: FrequencySmoothing<T>
+where
+    T: Debug,
+{
     /// Initialize all the parameters.
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64);
 

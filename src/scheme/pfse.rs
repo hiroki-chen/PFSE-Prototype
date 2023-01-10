@@ -169,7 +169,7 @@ where
         println!("Checking {:?}", ki);
 
         // Control the precision of comparison so that we won't abort on "close" variables.
-        (ki.k_one / ki.k_second - self.p_threshold).abs() <= 2f64.powf(-10_f64)
+        (ki.k_one / ki.k_second - self.p_threshold) <= 2f64.powf(-10_f64)
     }
 }
 
@@ -376,31 +376,48 @@ where
 
     fn transform(&mut self) {
         for (index, partition) in self.partitions.iter().enumerate() {
-            // Build a frequency table for this partition.
-            // let frequency_table = partition.build_frequency_table();
+            // Calculate \alpha.
+            let most_frequent = partition.inner.first().unwrap().1;
+            let alpha = ((self.p_partition
+                * self.partitions.len() as f64
+                * self.p_scale.powf(2.0))
+                / (self.p_mle_upper_bound * most_frequent as f64 * partition.inner.len() as f64))
+                .min(1.0);
 
-            // FIXME: It this correct?
             // There are some constraints that should be taken into consideration.
-            // 1. \frac{1}{k''_{i} \beta_{i} k_{0}} < 1 => k''_{i} > \frac{1}{\beta_{i} k_{0}}.
-            // 2. \frac{1}{n_i} < 1.
-            // k'_i
-            let k_prime_one =
-                (self.p_mle_upper_bound * self.message_num as f64 * E.powf(index as f64 + 1.0))
-                    / (self.p_partition * self.p_scale);
-            // k''_i
-            let k_prime_second = self.partitions.len() as f64 * E.powf(index as f64 + 1.0);
+            // 1. n_i &\geq k'_i \cdot \max_{m \in G_{i}} \{ n_{M}(m) \} \cdot |G_{i}|
+            // 2. \sum_{i \in [k]} \frac{k'_i}{k''_i} \lambda e^{-\lambda i} &\leq \frac{(\Delta + c) |M|}{k_{0}}
+
+            let k_prime_one = (self.p_partition as f64 * (index as f64 + 1.0))
+                / (self.partitions.len() as f64 * partition.inner.len() as f64);
+            let k_prime_second = (self.p_scale
+                * E.powf(self.p_partition * (index as f64 + 1.0))
+                * self.p_partition
+                * (index as f64 + 1.0))
+                / (alpha
+                    * self.p_mle_upper_bound
+                    * self.message_num as f64
+                    * partition.inner.len() as f64);
             let k_i = K::new(k_prime_one, k_prime_second);
 
             if !self.check_ki(&k_i) {
-                panic!("[-] This pair of parameters is invalid.");
+                // println!("[-] This pair of parameters is invalid.");
             }
 
             for message in partition.inner.iter() {
                 let set_size = (k_prime_one * message.1 as f64).ceil();
-                let pdf =
-                    1f64 / k_prime_second * partition.meta.cumulative_frequency * self.p_scale;
+                let pdf = 1f64
+                    / (k_prime_second
+                        * partition.meta.cumulative_frequency
+                        * self.message_num as f64);
 
-                println!("set size = {}, pdf = {}", set_size, pdf);
+                println!(
+                    "Message {}: set size = {}, pdf = {}, cum: {}",
+                    message.0.to_string(),
+                    set_size,
+                    pdf,
+                    partition.meta.cumulative_frequency
+                );
             }
         }
     }

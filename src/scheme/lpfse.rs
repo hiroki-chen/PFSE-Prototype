@@ -3,12 +3,9 @@
 //! Basically, there are two encoding strategies: the Interval-Based Homophonic Encoding and the Banded
 //! Homophonic Encoding, and we implement both of them.
 
-use std::collections::HashMap;
-use std::f64::consts::PI;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::marker::PhantomData;
-use std::ops::Range;
+use std::{
+    collections::HashMap, f64::consts::PI, fmt::Debug, hash::Hash, marker::PhantomData, ops::Range,
+};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
