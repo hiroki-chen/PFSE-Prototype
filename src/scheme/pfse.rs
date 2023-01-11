@@ -7,7 +7,7 @@ use base64::{engine::general_purpose, Engine};
 use rand_core::OsRng;
 
 use crate::{
-    fse::{FreqType, FrequencySmoothing, HistType, PartitionFrequencySmoothing},
+    fse::{FreqType, FrequencySmoothing, HistType, PartitionFrequencySmoothing, Random, ValueType},
     util::{build_histogram, build_histogram_vec},
 };
 
@@ -17,7 +17,7 @@ use crate::{
 /// ```tex
 ///   K = \frac{k''_i}{k'_i} \leq threshold.
 /// ```
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Clone)]
 pub struct K {
     k_one: f64,
     k_second: f64,
@@ -27,7 +27,28 @@ impl K {
     pub fn new(k_one: f64, k_second: f64) -> Self {
         Self { k_one, k_second }
     }
+
+    pub fn get(&self) -> f64 {
+        self.k_one / self.k_second
+    }
 }
+
+impl Debug for K {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let res = self.k_one / self.k_second;
+        write!(f, "{} / {} = {}", self.k_one, self.k_second, res)
+    }
+}
+
+impl PartialEq for K {
+    fn eq(&self, other: &Self) -> bool {
+        let lhs = self.k_one / self.k_second;
+        let rhs = other.k_one / other.k_second;
+        (lhs - rhs).abs() <= 1.0e-6
+    }
+}
+
+impl Eq for K {}
 
 #[derive(Debug, Clone)]
 pub struct PartitionMeta {
@@ -101,14 +122,15 @@ where
 #[derive(Debug, Clone)]
 pub struct ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + ToString + Eq + Debug + Clone + Random,
 {
     /// Is this context fully initialized?
     is_ready: bool,
     /// A random key used in pseudorandom function.
     key: Vec<u8>,
-    /// A table that stores the size of the ciphertext set for a given plaintext message `T`.
-    local_table: HashMap<T, usize>,
+    /// A table that stores the size of the ciphertext set for different partitions,
+    /// given a plaintext message `T`.
+    local_table: HashMap<T, Vec<ValueType>>,
     /// The parameter for partition.
     p_partition: f64,
     /// The scaling factor k_0.
@@ -127,13 +149,13 @@ where
 
 impl<T> ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + ToString + Eq + Debug + Clone + Random,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
     }
 
-    pub fn get_local_table(&self) -> &HashMap<T, usize> {
+    pub fn get_local_table(&self) -> &HashMap<T, Vec<ValueType>> {
         &self.local_table
     }
 
@@ -160,22 +182,11 @@ where
     pub fn get_partitions(&self) -> &Vec<Partition<T>> {
         &self.partitions
     }
-
-    /// A private method used to check if two factors `k'` and `k''` satisfy the mathematical constraint.
-    ///
-    /// If factors are chosen such that they do not conform to the constraint, the program need to re-sample a new pair
-    /// to ensure that the upper-bound of the MLE advantage can always be satisfied, or you can simply abort the execution.
-    fn check_ki(&self, ki: &K) -> bool {
-        println!("Checking {:?}", ki);
-
-        // Control the precision of comparison so that we won't abort on "close" variables.
-        (ki.k_one / ki.k_second - self.p_threshold) <= 2f64.powf(-10_f64)
-    }
 }
 
 impl<T> Default for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + ToString + Eq + Debug + Clone + Random,
 {
     fn default() -> Self {
         Self {
@@ -195,13 +206,20 @@ where
 
 impl<T> FrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + ToString + Eq + Debug + Clone + Random,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
+    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+        let value = match self.local_table.get(message) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        println!("{:?}", value);
+
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
@@ -214,43 +232,33 @@ where
             }
         };
 
-        // For statical distribution: check if the local table contains this message; if not, we do nothing.
-        if self.local_table.contains_key(message) {
-            let item = self.local_table.get(message).unwrap();
-
-            for i in 1..=*item {
-                let mut message_byte = Vec::new();
-                message_byte.extend_from_slice(item.to_string().as_bytes());
-                message_byte.extend_from_slice(&i.to_le_bytes());
-                let nonce = Nonce::from_slice(&[0u8; 12]);
-
-                // Encrypt the message.
-                // ciphertext = AES.encrypt(key, message || idx, 0);
-                let ciphertext = match aes.encrypt(nonce, message_byte.as_slice()) {
-                    Ok(ciphertext) => ciphertext,
-                    Err(e) => {
-                        println!(
-                            "[-] Error encrypting the message due to {:?}.",
-                            e.to_string()
-                        );
-                        return None;
-                    }
-                };
-                // Encode with base64.
-                ciphertexts.push(
-                    general_purpose::STANDARD_NO_PAD
-                        .encode(ciphertext)
-                        .into_bytes(),
-                );
+        for &(index, size, cnt) in value.iter() {
+            for j in 0..size {
+                for _ in 0..cnt {
+                    let nonce = Nonce::from_slice(&[0u8; 12usize]);
+                    let mut message_vec = message.to_string().into_bytes();
+                    message_vec.extend_from_slice(&index.to_le_bytes());
+                    message_vec.extend_from_slice(&j.to_le_bytes());
+                    let ciphertext = match aes.encrypt(nonce, message_vec.as_slice()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("[-] Error when encrypting the message due to {:?}", e);
+                            return None;
+                        }
+                    };
+                    ciphertexts.push(
+                        general_purpose::STANDARD_NO_PAD
+                            .encode(ciphertext)
+                            .into_bytes(),
+                    );
+                }
             }
-        } else {
-            println!("[-] The requested message does not exists, skip.");
         }
 
         Some(ciphertexts)
     }
 
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>> {
+    fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
@@ -282,7 +290,7 @@ where
                 return None;
             }
         };
-        plaintext.truncate(plaintext.len() - std::mem::size_of::<usize>());
+        plaintext.truncate(plaintext.len() - std::mem::size_of::<usize>() * 2);
 
         Some(plaintext)
     }
@@ -290,7 +298,7 @@ where
 
 impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + ToString + Eq + Debug + Clone + Random,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;
@@ -375,12 +383,11 @@ where
     }
 
     fn transform(&mut self) {
-        for (index, partition) in self.partitions.iter().enumerate() {
+        let k = self.partitions.len();
+        for (index, partition) in self.partitions.iter_mut().enumerate() {
             // Calculate \alpha.
             let most_frequent = partition.inner.first().unwrap().1;
-            let alpha = ((self.p_partition
-                * self.partitions.len() as f64
-                * self.p_scale.powf(2.0))
+            let alpha = ((self.p_partition * k as f64 * self.p_scale.powf(2.0))
                 / (self.p_mle_upper_bound * most_frequent as f64 * partition.inner.len() as f64))
                 .min(1.0);
 
@@ -388,8 +395,8 @@ where
             // 1. n_i &\geq k'_i \cdot \max_{m \in G_{i}} \{ n_{M}(m) \} \cdot |G_{i}|
             // 2. \sum_{i \in [k]} \frac{k'_i}{k''_i} \lambda e^{-\lambda i} &\leq \frac{(\Delta + c) |M|}{k_{0}}
 
-            let k_prime_one = (self.p_partition as f64 * (index as f64 + 1.0))
-                / (self.partitions.len() as f64 * partition.inner.len() as f64);
+            let k_prime_one = (self.p_partition * (index as f64 + 1.0))
+                / (k as f64 * partition.inner.len() as f64);
             let k_prime_second = (self.p_scale
                 * E.powf(self.p_partition * (index as f64 + 1.0))
                 * self.p_partition
@@ -398,27 +405,52 @@ where
                     * self.p_mle_upper_bound
                     * self.message_num as f64
                     * partition.inner.len() as f64);
-            let k_i = K::new(k_prime_one, k_prime_second);
+            let k_prime_one_reciprocal = 1.0 / k_prime_one;
 
-            if !self.check_ki(&k_i) {
-                // println!("[-] This pair of parameters is invalid.");
+            let n_i = (k_prime_second
+                * self.p_partition
+                * E.powf(-self.p_partition * (index as f64 + 1.0))
+                * self.p_scale
+                * self.message_num as f64)
+                .ceil() as usize;
+            let mut sum = 0;
+
+            for (message, cnt) in partition.inner.iter() {
+                let size = (k_prime_one * *cnt as f64).ceil() as usize;
+                let cur = self.local_table.entry(message.clone()).or_default();
+                cur.push((index, size, k_prime_one_reciprocal.ceil() as usize));
+                sum += size;
             }
 
-            for message in partition.inner.iter() {
-                let set_size = (k_prime_one * message.1 as f64).ceil();
-                let pdf = 1f64
-                    / (k_prime_second
-                        * partition.meta.cumulative_frequency
-                        * self.message_num as f64);
+            let delta = match n_i.checked_sub(sum) {
+                Some(d) => d,
+                None => panic!("[-] Internal error."),
+            };
+            for _ in sum + 1..=delta {
+                // Insert dummy values.
+                let dummy = T::random(32);
 
-                println!(
-                    "Message {}: set size = {}, pdf = {}, cum: {}",
-                    message.0.to_string(),
-                    set_size,
-                    pdf,
-                    partition.meta.cumulative_frequency
-                );
+                partition
+                    .inner
+                    .push((dummy, (1.0 / k_prime_one).ceil() as usize));
             }
         }
+    }
+
+    fn smooth(&mut self) -> Vec<Vec<u8>> {
+        let mut ciphertexts = Vec::new();
+
+        for partition in self.partitions.iter() {
+            for (message, cnt) in partition.inner.iter() {
+                if let Some(mut c) = self.encrypt(message) {
+                    ciphertexts.append(&mut c);
+                } else {
+                    let mut dummies = vec![message.clone().to_string().into_bytes(); *cnt];
+                    ciphertexts.append(&mut dummies);
+                }
+            }
+        }
+
+        ciphertexts
     }
 }

@@ -44,10 +44,10 @@ where
     fn initialize(&mut self, _messages: &[T], _advantage: f64);
 
     /// Encode the message and returns one of the homophones from its homophone set.
-    fn encode(&mut self, message: &T) -> Option<Vec<u8>>;
+    fn encode(&self, message: &T) -> Option<Vec<u8>>;
 
     /// Decode the message. Note we do not return `T` directly.
-    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>>;
+    fn decode(&self, message: &[u8]) -> Option<Vec<u8>>;
 }
 
 /// The encoder for IHBE.
@@ -203,7 +203,7 @@ where
         }
     }
 
-    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
+    fn encode(&self, message: &T) -> Option<Vec<u8>> {
         match self.local_table.get(message) {
             Some(interval) => {
                 let homophone = Uniform::new(interval.start, interval.end).sample(&mut OsRng);
@@ -218,7 +218,7 @@ where
         }
     }
 
-    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
+    fn decode(&self, message: &[u8]) -> Option<Vec<u8>> {
         // Simply strip the homophone from message.
         Some(message[..message.len() - std::mem::size_of::<usize>() - 1].to_vec())
     }
@@ -254,7 +254,7 @@ where
         self.width = most_frequent as f64 / (n * 2f64.powf(self.length as f64));
     }
 
-    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
+    fn encode(&self, message: &T) -> Option<Vec<u8>> {
         match self.histogram.get(message) {
             Some(&frequency) => {
                 // Compute message m’s frequency band.
@@ -272,7 +272,7 @@ where
         }
     }
 
-    fn decode(&mut self, message: &[u8]) -> Option<Vec<u8>> {
+    fn decode(&self, message: &[u8]) -> Option<Vec<u8>> {
         // Simply truncate the last l-bits.
         Some(message[..message.len() - std::mem::size_of::<u64>() - 1].to_vec())
     }
@@ -305,7 +305,7 @@ where
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
+    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>> {
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
@@ -345,7 +345,7 @@ where
         Some(ciphertexts)
     }
 
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>> {
+    fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {

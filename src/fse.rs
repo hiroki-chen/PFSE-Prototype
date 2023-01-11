@@ -4,6 +4,13 @@ use std::{f64::consts::E, fmt::Debug, fs::File, io::Write};
 
 pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
+pub type ValueType = (usize, usize, usize);
+
+/// Since we do not know the concret type of `T`, we need an extra trait to require that
+/// `T` can be randomly sampled.
+pub trait Random {
+    fn random(len: usize) -> Self;
+}
 
 /// This trait implements the interfaces for any FSE-like schemes.
 
@@ -15,10 +22,10 @@ where
     fn key_generate(&mut self);
 
     /// Encrypt the message and return the ciphertext vector. Return `None` if error occurrs.
-    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>>;
+    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>>;
 
     /// Decrypt the ciphertext and return the plaintext. Return `None` if error occurrs.
-    fn decrypt(&mut self, ciphertext: &[u8]) -> Option<Vec<u8>>;
+    fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>>;
 
     /// Store the summary of the current context into a given file.
     fn store(&self, path: &str) -> std::io::Result<()> {
@@ -28,6 +35,11 @@ where
             "Summary of the current context is\n\t{:#?}",
             self
         )
+    }
+
+    /// Search a given message `T` from the remote server.
+    fn search(&self, _message: &T) -> Option<Vec<T>> {
+        unimplemented!()
     }
 }
 
@@ -45,6 +57,9 @@ where
 
     /// Transform each partition by duplicating and smoothing each message.
     fn transform(&mut self);
+
+    /// Smoothes the partitions and outputs the ciphertext set.
+    fn smooth(&mut self) -> Vec<Vec<u8>>;
 }
 
 /// A function used in the partition phase. It takes the form `f(x) = \lambda e^{-\lambda x}`.

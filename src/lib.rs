@@ -41,7 +41,10 @@ mod test {
             .into_iter()
             .map(|elem| String::from_utf8(elem).unwrap())
             .collect::<Vec<String>>();
-        println!("{:?}", ciphertexts);
+        println!("{:?}", &ciphertexts[..10]);
+
+        let plaintext = ctx.decrypt(ciphertexts[0].as_bytes()).unwrap();
+        assert_eq!("1".to_string(), String::from_utf8(plaintext).unwrap());
     }
 
     #[test]
