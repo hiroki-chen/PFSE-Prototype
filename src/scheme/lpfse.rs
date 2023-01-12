@@ -13,6 +13,7 @@ use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
 use crate::{
+    db::{Connector, Data},
     fse::{FrequencySmoothing, HistType},
     util::{build_histogram, build_histogram_vec, compute_cdf},
 };
@@ -33,6 +34,8 @@ where
     key: Vec<u8>,
     /// The encoder for homophones.
     encoder: Box<dyn HomophoneEncoder<T>>,
+    /// The connector to the database.
+    conn: Option<Connector<Data>>,
 }
 
 /// A trait that defines a generic bahavior of encoders.
@@ -287,13 +290,20 @@ where
             advantage,
             key: Vec::new(),
             encoder,
+            conn: None,
         }
     }
 
-    /// Initialize the struct.
-    pub fn initialize(&mut self, messages: &[T]) {
+    /// Initialize the struct and its connector.
+    pub fn initialize(&mut self, messages: &[T], address: &str, db_name: &str, drop: bool) {
         // Initialize the encoder.
         self.encoder.initialize(messages, self.advantage);
+        // Initialize the connector.
+        self.conn = Some(Connector::new(address, db_name, drop).unwrap());
+    }
+
+    pub fn get_conn(&self) -> &Option<Connector<Data>> {
+        &self.conn
     }
 }
 

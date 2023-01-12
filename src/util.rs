@@ -1,15 +1,15 @@
-//! Utility module that mainly implements the filesystem, networking, database and some other intefaces.
+//! Utility module that mainly implements the filesystem, networking, and some other intefaces.
 
 use std::{
     collections::HashMap,
     fs::File,
     hash::Hash,
-    io::{BufRead, BufReader, Result, Write},
+    io::{BufRead, BufReader, Write},
 };
 
 use csv::ReaderBuilder;
 
-use crate::fse::HistType;
+use crate::{fse::HistType, Result};
 
 pub fn read_file(path: &str) -> Result<Vec<String>> {
     let mut strings = Vec::new();
@@ -52,7 +52,7 @@ pub fn read_csv(path: &str, column_name: &str) -> Result<Vec<String>> {
     Ok(strings)
 }
 
-pub fn write_file(path: &str, content: &[u8]) -> Result<()> {
+pub fn write_file(path: &str, content: &[u8]) -> std::io::Result<()> {
     File::open(path)?.write_all(content)
 }
 

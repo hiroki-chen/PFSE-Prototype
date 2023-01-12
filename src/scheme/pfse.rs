@@ -4,9 +4,11 @@ use std::{collections::HashMap, f64::consts::E, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
+use rand::seq::SliceRandom;
 use rand_core::OsRng;
 
 use crate::{
+    db::{Connector, Data},
     fse::{FreqType, FrequencySmoothing, HistType, PartitionFrequencySmoothing, Random, ValueType},
     util::{build_histogram, build_histogram_vec},
 };
@@ -145,6 +147,8 @@ where
     message_num: usize,
     /// Partitions.
     partitions: Vec<Partition<T>>,
+    /// Connector to the database.
+    conn: Option<Connector<Data>>,
 }
 
 impl<T> ContextPFSE<T>
@@ -182,6 +186,15 @@ where
     pub fn get_partitions(&self) -> &Vec<Partition<T>> {
         &self.partitions
     }
+
+    /// Initialize the database.
+    pub fn initialize_conn(&mut self, address: &str, db_name: &str, drop: bool) {
+        self.conn = Some(Connector::new(address, db_name, drop).unwrap())
+    }
+
+    pub fn get_conn(&self) -> &Option<Connector<Data>> {
+        &self.conn
+    }
 }
 
 impl<T> Default for ContextPFSE<T>
@@ -200,6 +213,7 @@ where
             p_threshold: 0f64,
             message_num: 0usize,
             partitions: Vec::new(),
+            conn: None,
         }
     }
 }
@@ -451,6 +465,7 @@ where
             }
         }
 
+        ciphertexts.shuffle(&mut OsRng);
         ciphertexts
     }
 }
