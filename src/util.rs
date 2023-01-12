@@ -9,7 +9,10 @@ use std::{
 
 use csv::ReaderBuilder;
 
-use crate::{fse::HistType, Result};
+use crate::{
+    fse::{HistType, Random, DEFAULT_RANDOM_LEN},
+    Result,
+};
 
 pub fn read_file(path: &str) -> Result<Vec<String>> {
     let mut strings = Vec::new();
@@ -63,9 +66,9 @@ where
 {
     // Convert histogram into vector that is ordered by frequency.
     let mut histogram_vec = Vec::new();
-    histogram
-        .iter()
-        .for_each(|(key, &frequency)| histogram_vec.push((key.clone(), frequency)));
+    histogram.iter().for_each(|(key, &frequency)| {
+        histogram_vec.push((key.clone(), frequency))
+    });
     // Second, sort the vector in descending order.
     histogram_vec.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1));
     histogram_vec
@@ -90,7 +93,11 @@ where
 }
 
 /// A helper function that computes the `i`-th value of the CDF, given a histogram and element number.
-pub fn compute_cdf<T>(index: usize, histogram: &Vec<HistType<T>>, num: usize) -> f64 {
+pub fn compute_cdf<T>(
+    index: usize,
+    histogram: &Vec<HistType<T>>,
+    num: usize,
+) -> f64 {
     if index >= histogram.len() {
         println!("[-] Index {} out of bound!", index);
         return 0f64;
@@ -102,4 +109,22 @@ pub fn compute_cdf<T>(index: usize, histogram: &Vec<HistType<T>>, num: usize) ->
     }
 
     sum
+}
+
+/// Pad the message dataset if the size does not match with the ciphertext dataset.
+pub fn pad_auxiliary<T>(
+    auxiliary: &mut Vec<HistType<T>>,
+    ciphertexts: &Vec<HistType<Vec<u8>>>,
+) where
+    T: Random,
+{
+    if auxiliary.len() < ciphertexts.len() {
+        let diff = ciphertexts.len() - auxiliary.len();
+
+        for _ in 0..diff {
+            let random_string = T::random(DEFAULT_RANDOM_LEN);
+            // Always pad with minimal frequency so that we cause minimal harm to the accuracy.
+            auxiliary.push((random_string, 1usize));
+        }
+    }
 }

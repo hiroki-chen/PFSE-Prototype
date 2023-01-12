@@ -54,13 +54,21 @@ where
     }
 
     /// Search a given document in the collection.
-    pub fn search(&self, document: Document, collection_name: &str) -> Result<Cursor<T>> {
+    pub fn search(
+        &self,
+        document: Document,
+        collection_name: &str,
+    ) -> Result<Cursor<T>> {
         let collection = self.database.collection(collection_name);
         Ok(collection.find(document, None)?)
     }
 
     /// Insert documents into the collection.
-    pub fn insert(&self, document: Vec<T>, collection_name: &str) -> Result<()> {
+    pub fn insert(
+        &self,
+        document: Vec<T>,
+        collection_name: &str,
+    ) -> Result<()> {
         let collection = self.database.collection(collection_name);
         collection.insert_many(document, None)?;
 

@@ -6,17 +6,24 @@ pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
 pub type ValueType = (usize, usize, usize);
 
+pub const DEFAULT_RANDOM_LEN: usize = 32usize;
+
 /// Since we do not know the concret type of `T`, we need an extra trait to require that
 /// `T` can be randomly sampled.
 pub trait Random {
     fn random(len: usize) -> Self;
 }
 
-/// This trait implements the interfaces for any FSE-like schemes.
+/// A trait that defines `as_bytes` method.
+pub trait AsBytes {
+    fn as_bytes(&self) -> &[u8];
+}
 
-pub trait FrequencySmoothing<T>: Debug
+/// This trait defines the interfaces for any cryptographic schemes.
+
+pub trait SymmetricEncryption<T>: Debug
 where
-    T: Debug,
+    T: AsBytes + Debug,
 {
     /// Given a security parameter, generate a secret key.
     fn key_generate(&mut self);
@@ -44,16 +51,20 @@ where
 }
 
 /// This trait is derived from [`FrequencySmoothing`] for partition-based FSE schemes.
-pub trait PartitionFrequencySmoothing<T>: FrequencySmoothing<T>
+pub trait PartitionFrequencySmoothing<T>: SymmetricEncryption<T>
 where
-    T: Debug,
+    T: AsBytes + Debug,
 {
     /// Initialize all the parameters.
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64);
 
     /// Given a vector of `T` and a function closure as the partitioning function, this function constructs the partitioned vectors
     /// containing tuples `(T, usize)` (T and its count).
-    fn partition(&mut self, input: &[T], partition_func: &dyn Fn(f64, usize) -> f64);
+    fn partition(
+        &mut self,
+        input: &[T],
+        partition_func: &dyn Fn(f64, usize) -> f64,
+    );
 
     /// Transform each partition by duplicating and smoothing each message.
     fn transform(&mut self);

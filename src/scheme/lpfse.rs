@@ -4,7 +4,8 @@
 //! Homophonic Encoding, and we implement both of them.
 
 use std::{
-    collections::HashMap, f64::consts::PI, fmt::Debug, hash::Hash, marker::PhantomData, ops::Range,
+    collections::HashMap, f64::consts::PI, fmt::Debug, hash::Hash,
+    marker::PhantomData, ops::Range,
 };
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
@@ -14,19 +15,19 @@ use rand_core::OsRng;
 
 use crate::{
     db::{Connector, Data},
-    fse::{FrequencySmoothing, HistType},
+    fse::{AsBytes, HistType, SymmetricEncryption},
     util::{build_histogram, build_histogram_vec, compute_cdf},
 };
 
 /// A context that represents the frequency-smoothing encryption scheme proposed by Lachrite and Paterson.
 ///
-/// Note that in order to use FSE for plaintext in any type `T`, you must ensure that `T` has the `Hash` and `ToString` trait bounds.
-/// They are required because `Hash` is needed in the local table, and `ToString` is used when performing the cryptographic
+/// Note that in order to use FSE for plaintext in any type `T`, you must ensure that `T` has the `Hash` and `AsBytes` trait bounds.
+/// They are required because `Hash` is needed in the local table, and `AsBytes` is used when performing the cryptographic
 /// operations like encryption and pseudorandom string generation.
 #[derive(Debug)]
 pub struct ContextLPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     /// The advantage of an optimal distinguisher that utilizes the K-S test.
     advantage: f64,
@@ -41,7 +42,7 @@ where
 /// A trait that defines a generic bahavior of encoders.
 pub trait HomophoneEncoder<T>: Debug
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     /// Initialize the encoder.
     fn initialize(&mut self, _messages: &[T], _advantage: f64);
@@ -57,7 +58,7 @@ where
 #[derive(Debug, Clone)]
 pub struct EncoderIHBE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     /// Stores the interval for each message.
     local_table: HashMap<T, Range<u64>>,
@@ -67,7 +68,7 @@ where
 #[derive(Debug, Clone)]
 pub struct EncoderBHE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     /// The length of the band.
     length: usize,
@@ -81,7 +82,7 @@ where
 
 impl<T> EncoderIHBE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     pub fn new() -> Self {
         Self {
@@ -111,18 +112,22 @@ where
             if i == 1 {
                 if cur_frequency < pow2_rplus1 {
                     // Force the frequency of this message to be aligned to `threshold`.
-                    histogram[i].1 = (pow2_rplus1 * message_num as f64).ceil() as usize;
+                    histogram[i].1 =
+                        (pow2_rplus1 * message_num as f64).ceil() as usize;
 
                     scale_factor = (1.0 - cur_frequency) / (1.0 - pow2_rplus1);
                 }
             } else if is_big_enough {
-                histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
+                histogram[i].1 =
+                    ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
             } else if cur_frequency >= pow2_r * scale_factor {
                 is_big_enough = true;
-                histogram[i].1 = ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
+                histogram[i].1 =
+                    ((histogram[i].1 as f64) / scale_factor).ceil() as usize;
             } else {
                 let cdf_prev = compute_cdf(i, histogram, message_num);
-                histogram[i].1 = ((histogram[i].1 as f64) * pow2_r).ceil() as usize;
+                histogram[i].1 =
+                    ((histogram[i].1 as f64) * pow2_r).ceil() as usize;
                 let cdf_cur = compute_cdf(i, histogram, message_num);
 
                 scale_factor = (1.0 - cdf_prev) / (1.0 - cdf_cur);
@@ -133,7 +138,7 @@ where
 
 impl<T> EncoderBHE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     pub fn new() -> Self {
         Self {
@@ -147,7 +152,7 @@ where
 
 impl<T> Default for EncoderIHBE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     fn default() -> Self {
         Self::new()
@@ -156,7 +161,7 @@ where
 
 impl<T> Default for EncoderBHE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     fn default() -> Self {
         Self::new()
@@ -165,7 +170,7 @@ where
 
 impl<T> HomophoneEncoder<T> for EncoderIHBE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -182,8 +187,8 @@ where
 
         // f_{D}(m_1).
         let most_frequent = histogram_vec.first().unwrap().1 as f64 / n as f64;
-        let log_inner =
-            f64::sqrt(n as f64) / (2.0 * f64::sqrt(2.0 * PI) * advantage * most_frequent);
+        let log_inner = f64::sqrt(n as f64)
+            / (2.0 * f64::sqrt(2.0 * PI) * advantage * most_frequent);
         let r = log_inner.log2().ceil();
         let pow2_r = 2f64.powf(r);
 
@@ -198,8 +203,10 @@ where
 
         // Construct the local table.
         for item in histogram_vec.iter().enumerate() {
-            let lhs = (pow2_r * cumulative_frequency.get(item.0).unwrap()).round() as u64;
-            let rhs = (pow2_r * cumulative_frequency.get(item.0 + 1).unwrap()).round() as u64;
+            let lhs = (pow2_r * cumulative_frequency.get(item.0).unwrap())
+                .round() as u64;
+            let rhs = (pow2_r * cumulative_frequency.get(item.0 + 1).unwrap())
+                .round() as u64;
             let range = lhs..rhs;
             self.local_table
                 .insert(histogram_vec.get(item.0).unwrap().0.clone(), range);
@@ -209,10 +216,11 @@ where
     fn encode(&self, message: &T) -> Option<Vec<u8>> {
         match self.local_table.get(message) {
             Some(interval) => {
-                let homophone = Uniform::new(interval.start, interval.end).sample(&mut OsRng);
+                let homophone = Uniform::new(interval.start, interval.end)
+                    .sample(&mut OsRng);
 
                 // Variant 1: Append the homophone to the message.
-                let mut encoded_message = message.to_string().into_bytes();
+                let mut encoded_message = message.as_bytes().to_vec();
                 encoded_message.extend_from_slice(b"|");
                 encoded_message.extend_from_slice(&homophone.to_le_bytes());
                 Some(encoded_message)
@@ -223,13 +231,16 @@ where
 
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>> {
         // Simply strip the homophone from message.
-        Some(message[..message.len() - std::mem::size_of::<usize>() - 1].to_vec())
+        Some(
+            message[..message.len() - std::mem::size_of::<usize>() - 1]
+                .to_vec(),
+        )
     }
 }
 
 impl<T> HomophoneEncoder<T> for EncoderBHE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -246,7 +257,8 @@ where
             .unwrap();
 
         let n = messages.len() as f64;
-        let log2 = f64::log2(n / ((2.0 * advantage).powf(2.0) * PI)).ceil() as usize;
+        let log2 =
+            f64::log2(n / ((2.0 * advantage).powf(2.0) * PI)).ceil() as usize;
         self.length = match log2.checked_sub(1) {
             Some(v) => v,
             None => {
@@ -266,7 +278,7 @@ where
 
                 // Construct m as m || t.
                 let mut encoded_message = Vec::new();
-                encoded_message.extend_from_slice(message.to_string().as_bytes());
+                encoded_message.extend_from_slice(message.as_bytes());
                 encoded_message.extend_from_slice(b"|");
                 encoded_message.extend_from_slice(&homophone.to_le_bytes());
                 Some(encoded_message)
@@ -283,7 +295,7 @@ where
 
 impl<T> ContextLPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     pub fn new(advantage: f64, encoder: Box<dyn HomophoneEncoder<T>>) -> Self {
         Self {
@@ -295,7 +307,13 @@ where
     }
 
     /// Initialize the struct and its connector.
-    pub fn initialize(&mut self, messages: &[T], address: &str, db_name: &str, drop: bool) {
+    pub fn initialize(
+        &mut self,
+        messages: &[T],
+        address: &str,
+        db_name: &str,
+        drop: bool,
+    ) {
         // Initialize the encoder.
         self.encoder.initialize(messages, self.advantage);
         // Initialize the connector.
@@ -307,9 +325,9 @@ where
     }
 }
 
-impl<T> FrequencySmoothing<T> for ContextLPFSE<T>
+impl<T> SymmetricEncryption<T> for ContextLPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
@@ -367,16 +385,17 @@ where
         };
 
         let nonce = Nonce::from_slice(&[0u8; 12]);
-        let decoded_plaintext = match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
-            Ok(v) => v,
-            Err(e) => {
-                println!(
-                    "[-] Error decoding the base64 string due to {:?}.",
-                    e.to_string()
-                );
-                return None;
-            }
-        };
+        let decoded_plaintext =
+            match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
+                Ok(v) => v,
+                Err(e) => {
+                    println!(
+                        "[-] Error decoding the base64 string due to {:?}.",
+                        e.to_string()
+                    );
+                    return None;
+                }
+            };
         let plaintext = match aes.decrypt(nonce, decoded_plaintext.as_slice()) {
             Ok(plaintext) => plaintext,
             Err(e) => {

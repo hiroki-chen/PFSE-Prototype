@@ -9,7 +9,10 @@ use rand_core::OsRng;
 
 use crate::{
     db::{Connector, Data},
-    fse::{FreqType, FrequencySmoothing, HistType, PartitionFrequencySmoothing, Random, ValueType},
+    fse::{
+        AsBytes, FreqType, HistType, PartitionFrequencySmoothing, Random,
+        SymmetricEncryption, ValueType, DEFAULT_RANDOM_LEN,
+    },
     util::{build_histogram, build_histogram_vec},
 };
 
@@ -74,7 +77,11 @@ impl<T> Partition<T>
 where
     T: Debug + Clone,
 {
-    pub fn new(inner: Vec<HistType<T>>, index: usize, cumulative_frequency: f64) -> Self {
+    pub fn new(
+        inner: Vec<HistType<T>>,
+        index: usize,
+        cumulative_frequency: f64,
+    ) -> Self {
         let meta = PartitionMeta {
             index,
             cumulative_frequency,
@@ -87,7 +94,9 @@ where
     pub fn build_frequency_table(&self) -> Vec<FreqType<T>> {
         self.inner
             .iter()
-            .map(|elem| (elem.0.clone(), elem.1 as f64 / self.meta.message_num as f64))
+            .map(|elem| {
+                (elem.0.clone(), elem.1 as f64 / self.meta.message_num as f64)
+            })
             .collect()
     }
 }
@@ -107,8 +116,8 @@ where
 
 /// A context that represents an partition-based FSE scheme instance. This struct mainly implements the [`PartitionFrequencySmoothing`] trait.
 ///
-/// Note that in order to use FSE for plaintext in any type `T`, you must ensure that `T` has the `Hash` and `ToString` trait bounds.
-/// They are required because `Hash` is needed in the local table, and `ToString` is used when performing the cryptographic
+/// Note that in order to use FSE for plaintext in any type `T`, you must ensure that `T` has the `Hash` and `AsBytes` trait bounds.
+/// They are required because `Hash` is needed in the local table, and `AsBytes` is used when performing the cryptographic
 /// operations like encryption and pseudorandom string generation.
 ///
 /// # Example
@@ -124,7 +133,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
     /// Is this context fully initialized?
     is_ready: bool,
@@ -153,7 +162,7 @@ where
 
 impl<T> ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
@@ -188,7 +197,12 @@ where
     }
 
     /// Initialize the database.
-    pub fn initialize_conn(&mut self, address: &str, db_name: &str, drop: bool) {
+    pub fn initialize_conn(
+        &mut self,
+        address: &str,
+        db_name: &str,
+        drop: bool,
+    ) {
         self.conn = Some(Connector::new(address, db_name, drop).unwrap())
     }
 
@@ -199,7 +213,7 @@ where
 
 impl<T> Default for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
     fn default() -> Self {
         Self {
@@ -218,9 +232,9 @@ where
     }
 }
 
-impl<T> FrequencySmoothing<T> for ContextPFSE<T>
+impl<T> SymmetricEncryption<T> for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
@@ -250,10 +264,12 @@ where
             for j in 0..size {
                 for _ in 0..cnt {
                     let nonce = Nonce::from_slice(&[0u8; 12usize]);
-                    let mut message_vec = message.to_string().into_bytes();
+                    let mut message_vec = message.as_bytes().to_vec();
                     message_vec.extend_from_slice(&index.to_le_bytes());
                     message_vec.extend_from_slice(&j.to_le_bytes());
-                    let ciphertext = match aes.encrypt(nonce, message_vec.as_slice()) {
+                    let ciphertext = match aes
+                        .encrypt(nonce, message_vec.as_slice())
+                    {
                         Ok(v) => v,
                         Err(e) => {
                             println!("[-] Error when encrypting the message due to {:?}", e);
@@ -284,26 +300,28 @@ where
             }
         };
         let nonce = Nonce::from_slice(&[0u8; 12]);
-        let decoded_ciphertext = match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
-            Ok(v) => v,
-            Err(e) => {
-                println!(
-                    "[-] Error decoding the base64 string due to {:?}.",
-                    e.to_string()
-                );
-                return None;
-            }
-        };
-        let mut plaintext = match aes.decrypt(nonce, decoded_ciphertext.as_slice()) {
-            Ok(plaintext) => plaintext,
-            Err(e) => {
-                println!(
-                    "[-] Error decrypting the message due to {:?}.",
-                    e.to_string()
-                );
-                return None;
-            }
-        };
+        let decoded_ciphertext =
+            match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
+                Ok(v) => v,
+                Err(e) => {
+                    println!(
+                        "[-] Error decoding the base64 string due to {:?}.",
+                        e.to_string()
+                    );
+                    return None;
+                }
+            };
+        let mut plaintext =
+            match aes.decrypt(nonce, decoded_ciphertext.as_slice()) {
+                Ok(plaintext) => plaintext,
+                Err(e) => {
+                    println!(
+                        "[-] Error decrypting the message due to {:?}.",
+                        e.to_string()
+                    );
+                    return None;
+                }
+            };
         plaintext.truncate(plaintext.len() - std::mem::size_of::<usize>() * 2);
 
         Some(plaintext)
@@ -312,7 +330,7 @@ where
 
 impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash + ToString + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;
@@ -321,7 +339,11 @@ where
         self.is_ready = true;
     }
 
-    fn partition(&mut self, input: &[T], partition_func: &dyn Fn(f64, usize) -> f64) {
+    fn partition(
+        &mut self,
+        input: &[T],
+        partition_func: &dyn Fn(f64, usize) -> f64,
+    ) {
         if !self.ready() {
             panic!("[-] Context not ready.");
         }
@@ -355,7 +377,8 @@ where
                 // Split j-th message.
                 let message_first_part = (
                     histogram_vec[j - 1].0.clone(),
-                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).round() as usize,
+                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).round()
+                        as usize,
                 );
                 let message_second_part = (
                     histogram_vec[j - 1].0.clone(),
@@ -372,7 +395,9 @@ where
                 if message_second_part.1 != 0 {
                     // Insert the second part into the vector again (descending order).
                     let pos = histogram_vec[j..]
-                        .binary_search_by(|(_, freq)| message_second_part.1.cmp(freq))
+                        .binary_search_by(|(_, freq)| {
+                            message_second_part.1.cmp(freq)
+                        })
                         .unwrap_or_else(|e| e);
                     histogram_vec.insert(pos + j, message_second_part);
                 }
@@ -390,7 +415,9 @@ where
 
         // Set threshold.
         self.p_threshold = (self.p_mle_upper_bound * self.message_num as f64)
-            / (self.p_partition * self.p_scale * self.get_partition_num() as f64);
+            / (self.p_partition
+                * self.p_scale
+                * self.get_partition_num() as f64);
 
         println!("{:#?}\n{:?}", self.partitions, histogram_vec);
         println!("threshold = {}", self.p_threshold);
@@ -401,9 +428,12 @@ where
         for (index, partition) in self.partitions.iter_mut().enumerate() {
             // Calculate \alpha.
             let most_frequent = partition.inner.first().unwrap().1;
-            let alpha = ((self.p_partition * k as f64 * self.p_scale.powf(2.0))
-                / (self.p_mle_upper_bound * most_frequent as f64 * partition.inner.len() as f64))
-                .min(1.0);
+            let alpha =
+                ((self.p_partition * k as f64 * self.p_scale.powf(2.0))
+                    / (self.p_mle_upper_bound
+                        * most_frequent as f64
+                        * partition.inner.len() as f64))
+                    .min(1.0);
 
             // There are some constraints that should be taken into consideration.
             // 1. n_i &\geq k'_i \cdot \max_{m \in G_{i}} \{ n_{M}(m) \} \cdot |G_{i}|
@@ -442,7 +472,7 @@ where
             };
             for _ in sum + 1..=delta {
                 // Insert dummy values.
-                let dummy = T::random(32);
+                let dummy = T::random(DEFAULT_RANDOM_LEN);
 
                 partition
                     .inner
@@ -459,7 +489,8 @@ where
                 if let Some(mut c) = self.encrypt(message) {
                     ciphertexts.append(&mut c);
                 } else {
-                    let mut dummies = vec![message.clone().to_string().into_bytes(); *cnt];
+                    let mut dummies =
+                        vec![message.clone().as_bytes().to_vec(); *cnt];
                     ciphertexts.append(&mut dummies);
                 }
             }
