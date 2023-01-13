@@ -2,9 +2,17 @@
 
 use std::{f64::consts::E, fmt::Debug, fs::File, io::Write};
 
+use crate::util::SizeAllocateed;
+
 pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
 pub type ValueType = (usize, usize, usize);
+
+impl SizeAllocateed for ValueType {
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
 
 pub const DEFAULT_RANDOM_LEN: usize = 32usize;
 

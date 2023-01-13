@@ -16,7 +16,7 @@ use rand_core::OsRng;
 use crate::{
     db::{Connector, Data},
     fse::{AsBytes, BaseCrypto, HistType},
-    util::{build_histogram, build_histogram_vec, compute_cdf},
+    util::{build_histogram, build_histogram_vec, compute_cdf, SizeAllocateed},
 };
 
 /// A context that represents the frequency-smoothing encryption scheme proposed by Lachrite and Paterson.
@@ -27,7 +27,7 @@ use crate::{
 #[derive(Debug)]
 pub struct ContextLPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     /// The advantage of an optimal distinguisher that utilizes the K-S test.
     advantage: f64,
@@ -40,9 +40,9 @@ where
 }
 
 /// A trait that defines a generic bahavior of encoders.
-pub trait HomophoneEncoder<T>: Debug
+pub trait HomophoneEncoder<T>: Debug + SizeAllocateed
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     /// Initialize the encoder.
     fn initialize(&mut self, _messages: &[T], _advantage: f64);
@@ -58,9 +58,9 @@ where
 #[derive(Debug, Clone)]
 pub struct EncoderIHBE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
-    /// Stores the interval for each message.
+    /// Stores the interval for each message. Not used after initialization.
     local_table: HashMap<T, Range<u64>>,
 }
 
@@ -68,7 +68,7 @@ where
 #[derive(Debug, Clone)]
 pub struct EncoderBHE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     /// The length of the band.
     length: usize,
@@ -82,7 +82,7 @@ where
 
 impl<T> EncoderIHBE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     pub fn new() -> Self {
         Self {
@@ -138,7 +138,7 @@ where
 
 impl<T> EncoderBHE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     pub fn new() -> Self {
         Self {
@@ -148,11 +148,15 @@ where
             _marker: PhantomData,
         }
     }
+
+    pub fn get_histogram(&self) -> &HashMap<T, usize> {
+        &self.histogram
+    }
 }
 
 impl<T> Default for EncoderIHBE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     fn default() -> Self {
         Self::new()
@@ -161,16 +165,38 @@ where
 
 impl<T> Default for EncoderBHE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
+impl<T> SizeAllocateed for EncoderBHE<T>
+where
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
+{
+    fn size_allocated(&self) -> usize {
+        self.histogram
+            .iter()
+            .map(|(k, v)| k.size_allocated() + (*v).size_allocated())
+            .sum::<usize>()
+    }
+}
+
+impl<T> SizeAllocateed for EncoderIHBE<T>
+where
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
+{
+    /// No extra space allocated.
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
 impl<T> HomophoneEncoder<T> for EncoderIHBE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -240,7 +266,7 @@ where
 
 impl<T> HomophoneEncoder<T> for EncoderBHE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -295,7 +321,7 @@ where
 
 impl<T> ContextLPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     pub fn new(advantage: f64, encoder: Box<dyn HomophoneEncoder<T>>) -> Self {
         Self {
@@ -304,6 +330,10 @@ where
             encoder,
             conn: None,
         }
+    }
+
+    pub fn get_encoder(&self) -> &Box<dyn HomophoneEncoder<T>> {
+        &self.encoder
     }
 
     /// Initialize the struct and its connector.
@@ -317,7 +347,9 @@ where
         // Initialize the encoder.
         self.encoder.initialize(messages, self.advantage);
         // Initialize the connector.
-        self.conn = Some(Connector::new(address, db_name, drop).unwrap());
+        if let Ok(conn) = Connector::new(address, db_name, drop) {
+            self.conn = Some(conn);
+        }
     }
 
     pub fn get_conn(&self) -> &Option<Connector<Data>> {
@@ -327,7 +359,7 @@ where
 
 impl<T> BaseCrypto<T> for ContextLPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone,
+    T: Hash + AsBytes + Eq + Debug + Clone + SizeAllocateed,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();

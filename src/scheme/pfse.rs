@@ -4,7 +4,6 @@ use std::{collections::HashMap, f64::consts::E, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
-use rand::seq::SliceRandom;
 use rand_core::OsRng;
 
 use crate::{
@@ -13,7 +12,7 @@ use crate::{
         AsBytes, BaseCrypto, FreqType, HistType, PartitionFrequencySmoothing,
         Random, ValueType, DEFAULT_RANDOM_LEN,
     },
-    util::{build_histogram, build_histogram_vec},
+    util::{build_histogram, build_histogram_vec, SizeAllocateed},
 };
 
 /// This struct defines the parameter pair that can be used to transform each partition `G_i`.
@@ -133,7 +132,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
 {
     /// Is this context fully initialized?
     is_ready: bool,
@@ -162,7 +161,7 @@ where
 
 impl<T> ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
@@ -213,7 +212,7 @@ where
 
 impl<T> Default for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
 {
     fn default() -> Self {
         Self {
@@ -234,7 +233,7 @@ where
 
 impl<T> BaseCrypto<T> for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
@@ -245,8 +244,6 @@ where
             Some(v) => v,
             None => return None,
         };
-
-        println!("{:?}", value);
 
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
@@ -262,26 +259,26 @@ where
 
         for &(index, size, cnt) in value.iter() {
             for j in 0..size {
-                for _ in 0..cnt {
-                    let nonce = Nonce::from_slice(&[0u8; 12usize]);
-                    let mut message_vec = message.as_bytes().to_vec();
-                    message_vec.extend_from_slice(&index.to_le_bytes());
-                    message_vec.extend_from_slice(&j.to_le_bytes());
-                    let ciphertext = match aes
-                        .encrypt(nonce, message_vec.as_slice())
-                    {
+                let nonce = Nonce::from_slice(&[0u8; 12usize]);
+                let mut message_vec = message.as_bytes().to_vec();
+                message_vec.extend_from_slice(&index.to_le_bytes());
+                message_vec.extend_from_slice(&j.to_le_bytes());
+                let ciphertext =
+                    match aes.encrypt(nonce, message_vec.as_slice()) {
                         Ok(v) => v,
                         Err(e) => {
-                            println!("[-] Error when encrypting the message due to {:?}", e);
+                            println!(
+                            "[-] Error when encrypting the message due to {:?}",
+                            e
+                        );
                             return None;
                         }
                     };
-                    ciphertexts.push(
-                        general_purpose::STANDARD_NO_PAD
-                            .encode(ciphertext)
-                            .into_bytes(),
-                    );
-                }
+                let encoded_ciphertext = general_purpose::STANDARD_NO_PAD
+                    .encode(ciphertext)
+                    .into_bytes();
+                let mut ciphertext_vec = vec![encoded_ciphertext; cnt];
+                ciphertexts.append(&mut ciphertext_vec);
             }
         }
 
@@ -330,7 +327,7 @@ where
 
 impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random,
+    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;
@@ -418,9 +415,6 @@ where
             / (self.p_partition
                 * self.p_scale
                 * self.get_partition_num() as f64);
-
-        println!("{:#?}\n{:?}", self.partitions, histogram_vec);
-        println!("threshold = {}", self.p_threshold);
     }
 
     fn transform(&mut self) {
@@ -505,7 +499,6 @@ where
             }
         }
 
-        ciphertexts.shuffle(&mut OsRng);
         ciphertexts
     }
 }

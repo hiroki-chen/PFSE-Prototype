@@ -1,9 +1,14 @@
+use std::collections::HashMap;
+
 use base64::{engine::general_purpose, Engine};
 use num_traits::Num;
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::{OsRng, RngCore};
 
-use crate::fse::{AsBytes, Random};
+use crate::{
+    fse::{AsBytes, Random},
+    util::SizeAllocateed,
+};
 
 pub mod lpfse;
 pub mod naive;
@@ -43,5 +48,38 @@ impl AsBytes for i32 {
                 std::mem::size_of::<Self>(),
             )
         }
+    }
+}
+
+impl SizeAllocateed for String {
+    fn size_allocated(&self) -> usize {
+        self.len()
+    }
+}
+
+impl SizeAllocateed for usize {
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<usize>()
+    }
+}
+
+impl<K, V> SizeAllocateed for HashMap<K, V>
+where
+    K: SizeAllocateed,
+    V: SizeAllocateed,
+{
+    fn size_allocated(&self) -> usize {
+        self.iter()
+            .map(|(k, v)| k.size_allocated() + v.size_allocated())
+            .sum::<usize>()
+    }
+}
+
+impl<T> SizeAllocateed for Vec<T>
+where
+    T: SizeAllocateed,
+{
+    fn size_allocated(&self) -> usize {
+        self.iter().map(|e| e.size_allocated()).sum::<usize>()
     }
 }

@@ -15,6 +15,11 @@ use crate::{
     Result,
 };
 
+/// A helper trait that defines an interface used to calculate the allocated size of an object.
+pub trait SizeAllocateed {
+    fn size_allocated(&self) -> usize;
+}
+
 pub fn read_file(path: &str) -> Result<Vec<String>> {
     let mut strings = Vec::new();
     let file = File::open(path)?;
