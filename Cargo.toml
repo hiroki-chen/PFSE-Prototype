@@ -27,4 +27,4 @@ attack = []
 [[bench]]
 name = "fse_benchmarks"
 harness = false
-path = "./benches/fse_benchmarks.rs"
+path = "./benches/bench_main.rs"

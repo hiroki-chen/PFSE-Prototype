@@ -4,7 +4,7 @@ mod attack_tests {
     pub fn test_lp_optimization() {
         use fse::attack::LpAttacker;
         use fse::fse::BaseCrypto;
-        use fse::scheme::naive::ContextNative;
+        use fse::scheme::native::ContextNative;
         use std::collections::HashMap;
 
         let mut attacker = LpAttacker::<String>::new(2);

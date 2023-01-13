@@ -202,7 +202,9 @@ where
         db_name: &str,
         drop: bool,
     ) {
-        self.conn = Some(Connector::new(address, db_name, drop).unwrap())
+        if let Ok(conn) = Connector::new(address, db_name, drop) {
+            self.conn = Some(conn);
+        }
     }
 
     pub fn get_conn(&self) -> &Option<Connector<Data>> {

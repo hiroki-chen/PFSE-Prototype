@@ -7,7 +7,10 @@ use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use rand_core::OsRng;
 
-use crate::fse::{AsBytes, BaseCrypto};
+use crate::{
+    db::{Connector, Data},
+    fse::{AsBytes, BaseCrypto},
+};
 
 #[derive(Debug)]
 pub struct ContextNative<T>
@@ -16,6 +19,8 @@ where
 {
     /// The secret key for symmetric encryption.
     key: Vec<u8>,
+    /// Connector to the database.
+    conn: Option<Connector<Data>>,
     /// Marker.
     _marker: PhantomData<T>,
 }
@@ -27,8 +32,24 @@ where
     pub fn new() -> Self {
         Self {
             key: Vec::new(),
+            conn: None,
             _marker: PhantomData,
         }
+    }
+
+    pub fn initialize_conn(
+        &mut self,
+        address: &str,
+        db_name: &str,
+        drop: bool,
+    ) {
+        if let Ok(conn) = Connector::new(address, db_name, drop) {
+            self.conn = Some(conn);
+        }
+    }
+
+    pub fn get_conn(&self) -> &Option<Connector<Data>> {
+        &self.conn
     }
 }
 

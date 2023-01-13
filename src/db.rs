@@ -9,13 +9,19 @@ use mongodb::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::Result;
+use crate::{util::SizeAllocateed, Result};
 
 /// A sample data store.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Data {
     pub id: usize,
     pub data: String,
+}
+
+impl SizeAllocateed for Data {
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<usize>() + self.data.len()
+    }
 }
 
 /// A context that can be used to perform database-related operations such as insert, search.
@@ -53,6 +59,15 @@ where
         self.database.name()
     }
 
+    /// Get the size of the target collection (in bytes).
+    pub fn size(&self, collection_name: &str) -> usize {
+        self.database
+            .collection::<T>(collection_name)
+            .estimated_document_count(None)
+            .unwrap() as usize
+            * std::mem::size_of::<T>()
+    }
+
     /// Search a given document in the collection.
     pub fn search(
         &self,
@@ -73,6 +88,11 @@ where
         collection.insert_many(document, None)?;
 
         Ok(())
+    }
+
+    /// Drop a given collection.
+    pub fn drop_collection(&self, collection_name: &str) {
+        self.database.collection::<T>(collection_name).drop(None);
     }
 }
 

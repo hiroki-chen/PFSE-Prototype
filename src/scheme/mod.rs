@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub mod lpfse;
-pub mod naive;
+pub mod native;
 pub mod pfse;
 
 impl Random for i32 {
@@ -59,7 +59,13 @@ impl SizeAllocateed for String {
 
 impl SizeAllocateed for usize {
     fn size_allocated(&self) -> usize {
-        std::mem::size_of::<usize>()
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl SizeAllocateed for u8 {
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<Self>()
     }
 }
 
@@ -76,6 +82,15 @@ where
 }
 
 impl<T> SizeAllocateed for Vec<T>
+where
+    T: SizeAllocateed,
+{
+    fn size_allocated(&self) -> usize {
+        self.iter().map(|e| e.size_allocated()).sum::<usize>()
+    }
+}
+
+impl<T> SizeAllocateed for [T]
 where
     T: SizeAllocateed,
 {
