@@ -16,7 +16,7 @@ mod scheme_tests {
         use fse::db::Data;
         use fse::util::read_csv;
         use fse::{
-            fse::PartitionFrequencySmoothing, fse::SymmetricEncryption,
+            fse::BaseCrypto, fse::PartitionFrequencySmoothing,
             pfse::ContextPFSE,
         };
 
@@ -47,7 +47,7 @@ mod scheme_tests {
     fn test_ihbe() {
         use fse::util::read_csv;
         use fse::{
-            fse::SymmetricEncryption,
+            fse::BaseCrypto,
             lpfse::{ContextLPFSE, EncoderIHBE},
         };
         let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
@@ -77,7 +77,7 @@ mod scheme_tests {
     fn test_bhe() {
         use fse::util::read_csv;
         use fse::{
-            fse::SymmetricEncryption,
+            fse::BaseCrypto,
             lpfse::{ContextLPFSE, EncoderBHE},
         };
 

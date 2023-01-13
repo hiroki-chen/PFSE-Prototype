@@ -20,4 +20,5 @@ serde = { version = "1.0.152", features = ["derive"] }
 doctest = false
 
 [features]
+default = ["attack"]
 attack = []

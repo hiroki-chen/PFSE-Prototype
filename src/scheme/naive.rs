@@ -7,7 +7,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use rand_core::OsRng;
 
-use crate::fse::{AsBytes, SymmetricEncryption};
+use crate::fse::{AsBytes, BaseCrypto};
 
 #[derive(Debug)]
 pub struct ContextNative<T>
@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<T> SymmetricEncryption<T> for ContextNative<T>
+impl<T> BaseCrypto<T> for ContextNative<T>
 where
     T: AsBytes + Debug,
 {

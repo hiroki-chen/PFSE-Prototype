@@ -21,7 +21,7 @@ pub trait AsBytes {
 
 /// This trait defines the interfaces for any cryptographic schemes.
 
-pub trait SymmetricEncryption<T>: Debug
+pub trait BaseCrypto<T>: Debug
 where
     T: AsBytes + Debug,
 {
@@ -51,7 +51,7 @@ where
 }
 
 /// This trait is derived from [`FrequencySmoothing`] for partition-based FSE schemes.
-pub trait PartitionFrequencySmoothing<T>: SymmetricEncryption<T>
+pub trait PartitionFrequencySmoothing<T>: BaseCrypto<T>
 where
     T: AsBytes + Debug,
 {

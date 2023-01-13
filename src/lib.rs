@@ -4,6 +4,7 @@
 #![deny(clippy::needless_borrow)]
 #![deny(clippy::new_without_default)]
 #![deny(clippy::needless_return)]
+#![deny(clippy::unnecessary_to_owned)]
 
 #[cfg(feature = "attack")]
 pub mod attack;

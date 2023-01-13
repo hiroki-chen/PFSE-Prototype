@@ -10,8 +10,8 @@ use rand_core::OsRng;
 use crate::{
     db::{Connector, Data},
     fse::{
-        AsBytes, FreqType, HistType, PartitionFrequencySmoothing, Random,
-        SymmetricEncryption, ValueType, DEFAULT_RANDOM_LEN,
+        AsBytes, BaseCrypto, FreqType, HistType, PartitionFrequencySmoothing,
+        Random, ValueType, DEFAULT_RANDOM_LEN,
     },
     util::{build_histogram, build_histogram_vec},
 };
@@ -232,7 +232,7 @@ where
     }
 }
 
-impl<T> SymmetricEncryption<T> for ContextPFSE<T>
+impl<T> BaseCrypto<T> for ContextPFSE<T>
 where
     T: Hash + AsBytes + Eq + Debug + Clone + Random,
 {
@@ -451,24 +451,33 @@ where
                     * partition.inner.len() as f64);
             let k_prime_one_reciprocal = 1.0 / k_prime_one;
 
+            // Add an extra 1 to prevent problems related to precisions.
             let n_i = (k_prime_second
                 * self.p_partition
                 * E.powf(-self.p_partition * (index as f64 + 1.0))
                 * self.p_scale
                 * self.message_num as f64)
-                .ceil() as usize;
+                .ceil() as usize
+                + 1;
             let mut sum = 0;
 
             for (message, cnt) in partition.inner.iter() {
-                let size = (k_prime_one * *cnt as f64).ceil() as usize;
+                let size = (k_prime_one * *cnt as f64).round() as usize;
                 let cur = self.local_table.entry(message.clone()).or_default();
-                cur.push((index, size, k_prime_one_reciprocal.ceil() as usize));
+                cur.push((
+                    index,
+                    size,
+                    k_prime_one_reciprocal.round() as usize,
+                ));
                 sum += size;
             }
 
             let delta = match n_i.checked_sub(sum) {
                 Some(d) => d,
-                None => panic!("[-] Internal error."),
+                None => panic!(
+                    "[-] Internal error: attemping to subtract {} by {}.",
+                    n_i, sum
+                ),
             };
             for _ in sum + 1..=delta {
                 // Insert dummy values.

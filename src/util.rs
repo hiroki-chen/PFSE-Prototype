@@ -2,6 +2,7 @@
 
 use std::{
     collections::HashMap,
+    fmt::Debug,
     fs::File,
     hash::Hash,
     io::{BufRead, BufReader, Write},
@@ -10,7 +11,7 @@ use std::{
 use csv::ReaderBuilder;
 
 use crate::{
-    fse::{HistType, Random, DEFAULT_RANDOM_LEN},
+    fse::{HistType, Random, ValueType, DEFAULT_RANDOM_LEN},
     Result,
 };
 
@@ -127,4 +128,41 @@ pub fn pad_auxiliary<T>(
             auxiliary.push((random_string, 1usize));
         }
     }
+}
+
+/// Compute the intersection of two arrays.
+pub fn intersect<T>(lhs: &[T], rhs: &[T]) -> Vec<T>
+where
+    T: Eq + Clone,
+{
+    let mut intersection = Vec::new();
+
+    // A very naive O(m * n) algorithm.
+    for item in lhs.iter() {
+        if rhs.iter().any(|e| e == item) {
+            intersection.push(item.clone());
+        }
+    }
+
+    intersection
+}
+
+/// For attacker only. This function computes the weight of each ciphertext in their **own** ciphertext set.
+#[cfg(feature = "attack")]
+pub fn compute_ciphertext_weight(
+    ciphertext_sets: &[Vec<Vec<u8>>],
+) -> HashMap<Vec<u8>, f64> {
+    let mut weight_map = HashMap::new();
+
+    for ciphertext_set in ciphertext_sets.iter() {
+        let sum = ciphertext_set.len();
+        for ciphertext in ciphertext_set.iter() {
+            let count =
+                ciphertext_set.iter().filter(|&e| e == ciphertext).count();
+            let weight = count as f64 / sum as f64;
+            weight_map.insert(ciphertext.clone(), weight);
+        }
+    }
+
+    weight_map
 }

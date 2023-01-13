@@ -9,8 +9,8 @@ use pathfinding::{
 };
 
 use crate::{
-    fse::{HistType, Random},
-    util::{build_histogram, build_histogram_vec, pad_auxiliary},
+    fse::{HistType, Random, ValueType},
+    util::{build_histogram, build_histogram_vec, intersect, pad_auxiliary},
 };
 
 /// An attacker that uses the $\ell_{p}$-norm to optimize the attack. The basic idea is find an as-signment from ciphertexts to
@@ -45,8 +45,8 @@ where
     pub fn attack(
         &mut self,
         correct: &HashMap<T, Vec<u8>>,
-        raw_auxiliary: &Vec<T>,
-        raw_ciphertexts: &Vec<Vec<u8>>,
+        raw_auxiliary: &[T],
+        raw_ciphertexts: &[Vec<u8>],
     ) -> f64 {
         // First, build the histograms for the two datasets.
         let mut auxiliary = {
@@ -76,8 +76,8 @@ where
     fn get_recovery_rate(
         &self,
         correct: &HashMap<T, Vec<u8>>,
-        auxiliary: &Vec<HistType<T>>,
-        ciphertexts: &Vec<HistType<Vec<u8>>>,
+        auxiliary: &[HistType<T>],
+        ciphertexts: &[HistType<Vec<u8>>],
     ) -> f64 {
         // The number of messages correctly recovered.
         let mut sum = 0usize;
@@ -138,13 +138,37 @@ where
 
 /// This struct mainly implements the MLE-based attacker that aims to recover the one-to-many mapping
 /// from the message to a set of ciphertexts obtained by the frequency smoothing scheme.
+///
+/// # Example
+/// ```rust
+/// let mut attacker = MLEAttacker::<String>::new();
+/// let auxiliary = vec![1, 2, 3]
+///     .into_iter()
+///     .map(|e| e.to_string())
+///     .collect::<Vec<_>>();
+/// let ciphertexts = auxiliary
+///     .iter()
+///     .copied()
+///     .cycle()
+///     .take(3 * 2)
+///     .collect::<Vec<_>>();
+/// let local_table = vec![
+///         ("1".to_string(), (1, 1, 1)),
+///         ("2".to_string(), (2, 2, 2)),
+///         ("3".to_string(), (3, 3, 3)),
+///     ]
+///     .into_iter()
+///     .collect::<HashMap<String, ValueType>>();
+/// // Suppose you have construct some correct mapping called `correct`.
+/// attacker.attack(&correct, &local_table, &auxiliary, &ciphertexts);
+/// ```
 #[derive(Debug)]
 pub struct MLEAttacker<T>
 where
     T: Eq + Clone + Hash,
 {
     /// The assignment of the attacker.
-    assignment: Option<Vec<(usize, Vec<u8>)>>,
+    assignment: Option<Vec<(usize, Vec<Vec<u8>>)>>,
     /// A marker.
     _marker: PhantomData<T>,
 }
@@ -158,5 +182,103 @@ where
             assignment: None,
             _marker: PhantomData,
         }
+    }
+
+    /// Perform the MLE attack. The attack proceeds as follows.
+    /// 1. Sort the ciphertexts and auxiliary datasets so that each element is in descending order per frequency.
+    ///    This step is automatically done by [`util::build_histogram_vec`].
+    /// 2. Scale the auxiliary dataset because there are one-to-many mappings.
+    /// 3. Suppose the attacker knows the size of ciphertext set of each message, it then assigns the most frequent
+    ///    ciphertext to the most frequent (scaled) message according to the size of its ciphertext set.
+    ///
+    /// Note that we assume the attacker knows the exact size of the ciphertext set of each message; this is done
+    /// by inputting the `local_table` obtained from the [`PFSEContext`] struct.
+    pub fn attack(
+        &mut self,
+        correct: &HashMap<T, Vec<Vec<u8>>>,
+        local_table: &HashMap<T, Vec<ValueType>>,
+        raw_ciphertexts: &[Vec<u8>],
+        ciphertext_weight: &HashMap<Vec<u8>, f64>,
+    ) -> f64 {
+        // Generate auxiliary according to the local table.
+        let mut auxiliary = Vec::new();
+        for (message, information) in local_table.iter() {
+            for &(_, size, count) in information.iter() {
+                let weight = count as f64 / size as f64;
+                auxiliary.push((message.clone(), weight, size));
+            }
+        }
+        auxiliary.sort_by(|lhs, rhs| rhs.1.partial_cmp(&lhs.1).unwrap());
+
+        let ciphertexts = {
+            let histogram = build_histogram(raw_ciphertexts);
+            build_histogram_vec(&histogram)
+        };
+
+        // Do the assignment.
+        let mut assignment = Vec::new();
+        // The index for the messag: which one are we accessing.
+        let mut cur = 0usize;
+        // The left boundary iterator for ciphertext set.
+        let mut i = 0usize;
+        while i < ciphertexts.len() {
+            let current_size = auxiliary.get(cur).unwrap().2;
+            let ciphertext_set = ciphertexts[i..i + current_size]
+                .iter()
+                .cloned()
+                .map(|e| e.0)
+                .collect::<Vec<_>>();
+
+            assignment.push((cur, ciphertext_set));
+            cur += 1;
+            i += current_size;
+        }
+
+        self.assignment = Some(assignment);
+        self.get_recovery_rate(
+            correct,
+            &auxiliary,
+            &ciphertexts,
+            ciphertext_weight,
+        )
+    }
+
+    fn get_recovery_rate(
+        &self,
+        correct: &HashMap<T, Vec<Vec<u8>>>,
+        auxiliary: &[(T, f64, usize)],
+        ciphertexts: &[HistType<Vec<u8>>],
+        ciphertext_weight_map: &HashMap<Vec<u8>, f64>,
+    ) -> f64 {
+        let mut sum = 0f64;
+        let message_num = auxiliary.iter().map(|e| e.2).sum::<usize>();
+
+        for (index, assignment) in self.assignment.as_ref().unwrap().iter() {
+            let (current_message, _, count) = &auxiliary.get(*index).unwrap();
+            let correct_ciphertexts = correct.get(current_message).unwrap();
+            let common = intersect(assignment, correct_ciphertexts);
+
+            let recovered =
+                common.len() as f64 / correct_ciphertexts.len() as f64;
+            // Find the weight of the message.
+            let message_weight = *count as f64 / message_num as f64;
+            // Find the weight of the ciphertexts.
+            for correct_ciphertext in common.iter() {
+                let ciphertext_weight =
+                    ciphertext_weight_map.get(correct_ciphertext).unwrap();
+                sum += recovered * message_weight * ciphertext_weight;
+            }
+        }
+
+        sum / message_num as f64
+    }
+}
+
+impl<T> Default for MLEAttacker<T>
+where
+    T: Eq + Clone + Hash,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }

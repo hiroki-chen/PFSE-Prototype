@@ -15,7 +15,7 @@ use rand_core::OsRng;
 
 use crate::{
     db::{Connector, Data},
-    fse::{AsBytes, HistType, SymmetricEncryption},
+    fse::{AsBytes, BaseCrypto, HistType},
     util::{build_histogram, build_histogram_vec, compute_cdf},
 };
 
@@ -325,7 +325,7 @@ where
     }
 }
 
-impl<T> SymmetricEncryption<T> for ContextLPFSE<T>
+impl<T> BaseCrypto<T> for ContextLPFSE<T>
 where
     T: Hash + AsBytes + Eq + Debug + Clone,
 {
