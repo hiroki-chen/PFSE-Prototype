@@ -14,7 +14,7 @@ mod attack_tests {
             .collect::<Vec<_>>();
 
         // Encrypt.
-        let mut ctx = ContextNative::new();
+        let mut ctx = ContextNative::new(false);
         let mut ciphertexts = Vec::new();
         let mut correct = HashMap::new();
         ctx.key_generate();

@@ -21,7 +21,7 @@ fn native_bench_on_real(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("native_init_bench_on_real");
     for size in [100, 1000, 10000, 100000, 1000000] {
-        let mut ctx = ContextNative::default();
+        let mut ctx = ContextNative::new(false);
         let slice = &vec[..size];
         ctx.key_generate();
 

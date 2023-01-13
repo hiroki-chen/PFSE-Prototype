@@ -9,6 +9,8 @@ use std::{
 };
 
 use csv::ReaderBuilder;
+use rand_core::OsRng;
+use rand_distr::Distribution;
 
 use crate::{
     fse::{HistType, Random, ValueType, DEFAULT_RANDOM_LEN},
@@ -118,6 +120,7 @@ pub fn compute_cdf<T>(
 }
 
 /// Pad the message dataset if the size does not match with the ciphertext dataset.
+#[cfg(feature = "attack")]
 pub fn pad_auxiliary<T>(
     auxiliary: &mut Vec<HistType<T>>,
     ciphertexts: &Vec<HistType<Vec<u8>>>,
@@ -136,6 +139,7 @@ pub fn pad_auxiliary<T>(
 }
 
 /// Compute the intersection of two arrays.
+#[cfg(feature = "attack")]
 pub fn intersect<T>(lhs: &[T], rhs: &[T]) -> Vec<T>
 where
     T: Eq + Clone,
@@ -170,4 +174,30 @@ pub fn compute_ciphertext_weight(
     }
 
     weight_map
+}
+
+/// Generate a synthetic dataset from a normal distribution for testing.
+pub fn generate_synthetic_normal<T>(
+    support: &[T],
+    mean: usize,
+    deviation: f64,
+) -> Vec<T>
+where
+    T: Clone,
+{
+    let mut dataset = Vec::new();
+    let normal = rand_distr::Normal::new(mean as f64, deviation).unwrap();
+
+    for item in support.iter() {
+        let mut val = 0usize;
+        loop {
+            val = normal.sample(&mut OsRng).round() as usize;
+            if val != 0 {
+                break;
+            }
+        }
+        dataset.append(&mut vec![item.clone(); val]);
+    }
+
+    dataset
 }

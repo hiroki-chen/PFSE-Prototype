@@ -5,7 +5,7 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
-use rand_core::OsRng;
+use rand_core::{OsRng, RngCore};
 
 use crate::{
     db::{Connector, Data},
@@ -21,6 +21,8 @@ where
     key: Vec<u8>,
     /// Connector to the database.
     conn: Option<Connector<Data>>,
+    /// Whether we use RND.
+    rnd: bool,
     /// Marker.
     _marker: PhantomData<T>,
 }
@@ -29,10 +31,11 @@ impl<T> ContextNative<T>
 where
     T: AsBytes + Debug,
 {
-    pub fn new() -> Self {
+    pub fn new(rnd: bool) -> Self {
         Self {
             key: Vec::new(),
             conn: None,
+            rnd,
             _marker: PhantomData,
         }
     }
@@ -58,7 +61,7 @@ where
     T: AsBytes + Debug,
 {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -82,8 +85,15 @@ where
                 return None;
             }
         };
-        let nonce = Nonce::from_slice(&[0u8; 12]);
-        let ciphertext = match aes.encrypt(nonce, message.as_bytes()) {
+        let nonce = match self.rnd {
+            true => {
+                let mut buf = vec![0u8; 12];
+                OsRng.fill_bytes(&mut buf);
+                Nonce::clone_from_slice(buf.as_slice())
+            }
+            false => Nonce::clone_from_slice(&[0u8; 12]),
+        };
+        let ciphertext = match aes.encrypt(&nonce, message.as_bytes()) {
             Ok(v) => v,
             Err(e) => {
                 println!(

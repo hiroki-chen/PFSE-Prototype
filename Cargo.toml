@@ -15,6 +15,7 @@ num-traits = "0.2.15"
 pathfinding = "4.2.0"
 rand = "0.8.5"
 rand_core = { version = "0.6.0", features = ["std"] }
+rand_distr = "0.4.3"
 serde = { version = "1.0.152", features = ["derive"] }
 
 [lib]

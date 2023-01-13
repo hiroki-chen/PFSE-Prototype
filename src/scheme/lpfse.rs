@@ -332,8 +332,8 @@ where
         }
     }
 
-    pub fn get_encoder(&self) -> &Box<dyn HomophoneEncoder<T>> {
-        &self.encoder
+    pub fn get_encoder(&self) -> &dyn HomophoneEncoder<T> {
+        self.encoder.as_ref()
     }
 
     /// Initialize the struct and its connector.
