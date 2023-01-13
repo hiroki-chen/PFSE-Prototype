@@ -10,7 +10,7 @@ use std::{
 
 use csv::ReaderBuilder;
 use rand_core::OsRng;
-use rand_distr::Distribution;
+use rand_distr::{Distribution, Normal};
 
 use crate::{
     fse::{HistType, Random, ValueType, DEFAULT_RANDOM_LEN},
@@ -185,19 +185,24 @@ pub fn generate_synthetic_normal<T>(
 where
     T: Clone,
 {
-    let mut dataset = Vec::new();
-    let normal = rand_distr::Normal::new(mean as f64, deviation).unwrap();
+    let normal = Normal::new(mean as f64, deviation).unwrap();
+    generate_dataset(normal, support)
+}
 
+fn generate_dataset<T>(dist: impl Distribution<f64>, support: &[T]) -> Vec<T>
+where
+    T: Clone,
+{
+    let mut dataset = Vec::new();
     for item in support.iter() {
         let mut val = 0usize;
         loop {
-            val = normal.sample(&mut OsRng).round() as usize;
+            val = dist.sample(&mut OsRng).round() as usize;
             if val != 0 {
                 break;
             }
         }
         dataset.append(&mut vec![item.clone(); val]);
     }
-
     dataset
 }
