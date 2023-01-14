@@ -5,7 +5,7 @@ use fse::{
     lpfse::{ContextLPFSE, EncoderBHE, EncoderIHBE},
     native::ContextNative,
     pfse::ContextPFSE,
-    util::read_csv,
+    util::read_csv_exact,
 };
 use rand::seq::SliceRandom;
 use rand_core::OsRng;
@@ -27,7 +27,7 @@ criterion_group! {
 }
 
 fn dte_bench_on_real(c: &mut Criterion) {
-    let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+    let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
     vec.shuffle(&mut OsRng);
 
     let mut group = c.benchmark_group("dte_query_bench_on_real");
@@ -67,7 +67,7 @@ fn dte_bench_on_real(c: &mut Criterion) {
 }
 
 fn pfse_bench_on_real(c: &mut Criterion) {
-    let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+    let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
     vec.shuffle(&mut OsRng);
 
     // Benchmark with different input sizes.
@@ -113,7 +113,7 @@ fn pfse_bench_on_real(c: &mut Criterion) {
 }
 
 fn lpfse_ihbe_bench_on_real(c: &mut Criterion) {
-    let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+    let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
     vec.shuffle(&mut OsRng);
 
     let mut group = c.benchmark_group("lpfse_ihbe_insert_bench_on_real");
@@ -151,7 +151,7 @@ fn lpfse_ihbe_bench_on_real(c: &mut Criterion) {
 }
 
 fn lpfse_bhe_bench_on_real(c: &mut Criterion) {
-    let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+    let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
     vec.shuffle(&mut OsRng);
 
     let mut group = c.benchmark_group("lpfse_bhe_insert_bench_on_real");
@@ -189,7 +189,7 @@ fn lpfse_bhe_bench_on_real(c: &mut Criterion) {
 }
 
 fn rnd_bench_on_real(c: &mut Criterion) {
-    let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+    let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
     vec.shuffle(&mut OsRng);
 
     let mut group = c.benchmark_group("rnd_db_bench_on_real");

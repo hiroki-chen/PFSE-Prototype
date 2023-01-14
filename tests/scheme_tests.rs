@@ -16,13 +16,13 @@ mod scheme_tests {
     #[test]
     fn test_partition() {
         use fse::db::Data;
-        use fse::util::read_csv;
+        use fse::util::read_csv_exact;
         use fse::{
             fse::BaseCrypto, fse::PartitionFrequencySmoothing,
             pfse::ContextPFSE,
         };
 
-        let vec = read_csv("./data/test.csv", "order_number").unwrap();
+        let vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
         let mut ctx = ContextPFSE::default();
         ctx.initialize_conn(ADDRESS, DB_NAME, false);
         ctx.key_generate();
@@ -47,12 +47,12 @@ mod scheme_tests {
 
     #[test]
     fn test_ihbe() {
-        use fse::util::read_csv;
+        use fse::util::read_csv_exact;
         use fse::{
             fse::BaseCrypto,
             lpfse::{ContextLPFSE, EncoderIHBE},
         };
-        let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+        let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
         vec.sort();
         let mut ctx =
             ContextLPFSE::new(2f64.powf(-10_f64), Box::new(EncoderIHBE::new()));
@@ -77,13 +77,13 @@ mod scheme_tests {
 
     #[test]
     fn test_bhe() {
-        use fse::util::read_csv;
+        use fse::util::read_csv_exact;
         use fse::{
             fse::BaseCrypto,
             lpfse::{ContextLPFSE, EncoderBHE},
         };
 
-        let mut vec = read_csv("./data/test.csv", "order_number").unwrap();
+        let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
         vec.sort();
         let mut ctx =
             ContextLPFSE::new(2f64.powf(-10_f64), Box::new(EncoderBHE::new()));
@@ -108,11 +108,11 @@ mod scheme_tests {
 
     #[test]
     fn test_read_csv() {
-        use fse::util::read_csv;
+        use fse::util::read_csv_exact;
 
         let path = "./data/test.csv";
         let column = "order_number";
-        let strings = read_csv(path, column).unwrap();
+        let strings = read_csv_exact(path, column).unwrap();
         println!("{:?}", &strings[..10]);
     }
 

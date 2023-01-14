@@ -1,42 +1,13 @@
 #[cfg(feature = "attack")]
 mod attack_tests {
     #[test]
-    pub fn test_lp_optimization() {
-        use fse::attack::LpAttacker;
-        use fse::fse::BaseCrypto;
-        use fse::scheme::native::ContextNative;
-        use std::collections::HashMap;
-
-        let mut attacker = LpAttacker::<String>::new(2);
-        let auxiliary = vec![1, 2, 3, 4, 1, 2, 3, 4, 4, 4, 4, 2, 2, 3, 4]
-            .into_iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>();
-
-        // Encrypt.
-        let mut ctx = ContextNative::new(false);
-        let mut ciphertexts = Vec::new();
-        let mut correct = HashMap::new();
-        ctx.key_generate();
-        for message in auxiliary.iter() {
-            let ciphertext = ctx.encrypt(message).unwrap().remove(0);
-            correct.insert(message.clone(), ciphertext.clone());
-            ciphertexts.push(ciphertext);
-        }
-
-        let rate = attacker.attack(&correct, &auxiliary, &ciphertexts);
-        assert!(rate <= 1.0);
-        println!("{}", rate);
-    }
-
-    #[test]
     pub fn test_mle_attack() {
         use fse::{
             attack::MLEAttacker,
             fse::BaseCrypto,
             fse::PartitionFrequencySmoothing,
             scheme::pfse::ContextPFSE,
-            util::{compute_ciphertext_weight, read_csv},
+            util::{compute_ciphertext_weight, read_csv_exact},
         };
         use rand::prelude::*;
         use rand_core::OsRng;
@@ -45,7 +16,7 @@ mod attack_tests {
         let mut attacker = MLEAttacker::<String>::new();
 
         let mut plaintexts =
-            read_csv("./data/test.csv", "order_number").unwrap();
+        read_csv_exact("./data/test.csv", "order_number").unwrap();
         plaintexts.shuffle(&mut OsRng);
         plaintexts.truncate(10000);
 

@@ -15,7 +15,7 @@ use rand_core::OsRng;
 
 use crate::{
     db::{Connector, Data},
-    fse::{AsBytes, BaseCrypto, Conn, FromBytes, HistType},
+    fse::{AsBytes, BaseCrypto, Conn, FromBytes, HistType, ValueType},
     util::{build_histogram, build_histogram_vec, compute_cdf, SizeAllocateed},
 };
 
@@ -52,6 +52,11 @@ where
 
     /// Decode the message. Note we do not return `T` directly.
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>>;
+
+    /// Collect the local table for attack.
+    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
+        unimplemented!()
+    }
 }
 
 /// The encoder for IHBE.
@@ -60,8 +65,8 @@ pub struct EncoderIHBE<T>
 where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
 {
-    /// Stores the interval for each message. Not used after initialization.
-    local_table: HashMap<T, Range<u64>>,
+    /// Stores the frequency and interval for each message. Not used after initialization.
+    local_table: HashMap<T, (usize, Range<u64>)>,
 }
 
 /// The encoder for BHE.
@@ -234,14 +239,14 @@ where
             let rhs = (pow2_r * cumulative_frequency.get(item.0 + 1).unwrap())
                 .round() as u64;
             let range = lhs..rhs;
-            self.local_table
-                .insert(histogram_vec.get(item.0).unwrap().0.clone(), range);
+            let entry = histogram_vec.get(item.0).unwrap();
+            self.local_table.insert(entry.0.clone(), (entry.1, range));
         }
     }
 
     fn encode(&self, message: &T) -> Option<Vec<u8>> {
         match self.local_table.get(message) {
-            Some(interval) => {
+            Some((_, interval)) => {
                 let homophone = Uniform::new(interval.start, interval.end)
                     .sample(&mut OsRng);
 
@@ -261,6 +266,16 @@ where
             message[..message.len() - std::mem::size_of::<usize>() - 1]
                 .to_vec(),
         )
+    }
+
+    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
+        self.local_table
+            .iter()
+            .map(|(k, v)| {
+                let size = (v.1.end - v.1.start) as usize;
+                (k.clone(), vec![(0usize, v.0, size)])
+            })
+            .collect()
     }
 }
 

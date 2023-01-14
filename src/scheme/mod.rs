@@ -47,7 +47,7 @@ impl FromBytes for String {
 impl FromBytes for i32 {
     #[inline(always)]
     fn from_bytes(bytes: &[u8]) -> Self {
-        Self::from_ne_bytes(bytes.clone().try_into().unwrap())
+        Self::from_ne_bytes(bytes.try_into().unwrap())
     }
 }
 

@@ -8,7 +8,7 @@ use std::{
     io::{BufRead, BufReader, Write},
 };
 
-use csv::ReaderBuilder;
+use csv::{Reader, ReaderBuilder};
 use rand_core::OsRng;
 use rand_distr::{Distribution, Normal, Zipf};
 
@@ -34,19 +34,27 @@ pub fn read_file(path: &str) -> Result<Vec<String>> {
     Ok(strings)
 }
 
-/// Parse a CSV file and read the corresponding column.
-pub fn read_csv(path: &str, column_name: &str) -> Result<Vec<String>> {
-    let mut reader = ReaderBuilder::new().has_headers(true).from_path(path)?;
-
+/// Read a whole csv file.
+fn read_csv(path: &str) -> Result<Reader<File>> {
+    Ok(ReaderBuilder::new().has_headers(true).from_path(path)?)
+}
+/// Read the corresponding column.
+fn read_column(
+    reader: &mut Reader<File>,
+    column_name: &str,
+) -> Result<Vec<String>> {
     // Locate the target column.
-    let index = reader
+    let index = match reader
         .headers()
         .unwrap()
         .iter()
         .enumerate()
         .find(|&(_, str)| str == column_name)
-        .unwrap()
-        .0;
+    {
+        Some(index) => index.0,
+        None => return Err("Not found.".into()),
+    };
+
     let strings = reader
         .records()
         .map(|elem| {
@@ -61,6 +69,28 @@ pub fn read_csv(path: &str, column_name: &str) -> Result<Vec<String>> {
         .collect();
 
     Ok(strings)
+}
+
+/// Parse a CSV file and read multiple columns.
+pub fn read_csv_multiple(
+    path: &str,
+    column_names: &[String],
+) -> Result<Vec<Vec<String>>> {
+    let mut reader = read_csv(path)?;
+
+    let mut strings = Vec::new();
+    for column_name in column_names.iter() {
+        strings.push(read_column(&mut reader, column_name)?);
+    }
+
+    Ok(strings)
+}
+
+/// Parse a CSV file and read the corresponding column.
+pub fn read_csv_exact(path: &str, column_name: &str) -> Result<Vec<String>> {
+    let mut reader = read_csv(path)?;
+
+    read_column(&mut reader, column_name)
 }
 
 pub fn write_file(path: &str, content: &[u8]) -> std::io::Result<()> {
@@ -122,7 +152,7 @@ pub fn compute_cdf<T>(
 /// Pad the message dataset if the size does not match with the ciphertext dataset.
 #[cfg(feature = "attack")]
 pub fn pad_auxiliary<T>(
-    auxiliary: &mut Vec<HistType<T>>,
+    auxiliary: &mut Vec<(T, f64, usize)>,
     ciphertexts: &Vec<HistType<Vec<u8>>>,
 ) where
     T: Random,
@@ -133,7 +163,7 @@ pub fn pad_auxiliary<T>(
         for _ in 0..diff {
             let random_string = T::random(DEFAULT_RANDOM_LEN);
             // Always pad with minimal frequency so that we cause minimal harm to the accuracy.
-            auxiliary.push((random_string, 1usize));
+            auxiliary.push((random_string, 10e-8, 1usize));
         }
     }
 }
