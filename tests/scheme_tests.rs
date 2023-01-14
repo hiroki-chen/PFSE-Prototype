@@ -1,4 +1,6 @@
 mod scheme_tests {
+    use fse::fse::Conn;
+
     const ADDRESS: &str = "mongodb://127.0.0.1:27017";
     const DB_NAME: &str = "bench";
     const PFSE_COLLECTION: &str = "pfse_collection";
@@ -39,7 +41,7 @@ mod scheme_tests {
             })
             .collect::<Vec<_>>();
 
-        let conn = ctx.get_conn().as_ref().unwrap();
+        let conn = ctx.get_conn();
         conn.insert(documents, PFSE_COLLECTION).unwrap();
     }
 
@@ -117,6 +119,7 @@ mod scheme_tests {
     #[test]
     fn test_db() {
         use fse::pfse::ContextPFSE;
+        use mongodb::bson::*;
 
         let mut ctx = ContextPFSE::<String>::default();
         let doc = fse::db::Data {
@@ -124,10 +127,20 @@ mod scheme_tests {
             data: "ooo".to_string(),
         };
         ctx.initialize_conn("mongodb://127.0.0.1:27017", "bench", true);
-        ctx.get_conn()
-            .as_ref()
-            .unwrap()
-            .insert(vec![doc], "test_collection")
-            .unwrap();
+        let conn = ctx.get_conn();
+        conn.insert(vec![doc], "test_collection").unwrap();
+
+        let mut doc = Document::new();
+        let mut test_key = Document::new();
+        test_key.insert("data", "ooo");
+        doc.insert("$or", vec![test_key]);
+
+        println!(
+            "{:?}",
+            conn.search(doc, "test_collection")
+                .unwrap()
+                .into_iter()
+                .collect::<Vec<_>>()
+        );
     }
 }

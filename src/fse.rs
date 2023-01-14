@@ -2,7 +2,12 @@
 
 use std::{f64::consts::E, fmt::Debug, fs::File, io::Write};
 
-use crate::util::SizeAllocateed;
+use mongodb::bson::Document;
+
+use crate::{
+    db::{Connector, Data},
+    util::SizeAllocateed,
+};
 
 pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
@@ -27,11 +32,21 @@ pub trait AsBytes {
     fn as_bytes(&self) -> &[u8];
 }
 
+/// A trait that defines `from_bytes` method.
+pub trait FromBytes {
+    fn from_bytes(bytes: &[u8]) -> Self;
+}
+
+/// A trait that defines conector method.
+pub trait Conn {
+    fn get_conn(&self) -> &Connector<Data>;
+}
+
 /// This trait defines the interfaces for any cryptographic schemes.
 
-pub trait BaseCrypto<T>: Debug
+pub trait BaseCrypto<T>: Debug + Conn
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     /// Given a security parameter, generate a secret key.
     fn key_generate(&mut self);
@@ -53,15 +68,42 @@ where
     }
 
     /// Search a given message `T` from the remote server.
-    fn search(&self, _message: &T) -> Option<Vec<T>> {
-        unimplemented!()
+    fn search(&self, message: &T, name: &str) -> Option<Vec<T>> {
+        let mut encrypted_message = match self.encrypt(message) {
+            Some(v) => v,
+            None => return None,
+        }
+        .into_iter()
+        .map(|e| {
+            let mut document = Document::new();
+            document.insert("data".to_string(), String::from_utf8(e).unwrap());
+            document
+        })
+        .collect::<Vec<_>>();
+
+        let mut filter = Document::new();
+        filter.insert("$or", encrypted_message);
+
+        let data = match self.get_conn().search(filter, name) {
+            Ok(cursor) => cursor,
+            Err(_) => return None,
+        }
+        .into_iter()
+        .map(|data| {
+            let message_bytes =
+                self.decrypt(data.unwrap().data.as_bytes()).unwrap();
+            T::from_bytes(&message_bytes)
+        })
+        .collect::<Vec<_>>();
+
+        Some(data)
     }
 }
 
 /// This trait is derived from [`FrequencySmoothing`] for partition-based FSE schemes.
 pub trait PartitionFrequencySmoothing<T>: BaseCrypto<T>
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     /// Initialize all the parameters.
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64);

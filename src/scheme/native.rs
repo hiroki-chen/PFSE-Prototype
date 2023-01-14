@@ -9,13 +9,13 @@ use rand_core::{OsRng, RngCore};
 
 use crate::{
     db::{Connector, Data},
-    fse::{AsBytes, BaseCrypto},
+    fse::{AsBytes, BaseCrypto, Conn, FromBytes},
 };
 
 #[derive(Debug)]
 pub struct ContextNative<T>
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     /// The secret key for symmetric encryption.
     key: Vec<u8>,
@@ -29,7 +29,7 @@ where
 
 impl<T> ContextNative<T>
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     pub fn new(rnd: bool) -> Self {
         Self {
@@ -50,24 +50,29 @@ where
             self.conn = Some(conn);
         }
     }
-
-    pub fn get_conn(&self) -> &Option<Connector<Data>> {
-        &self.conn
-    }
 }
 
 impl<T> Default for ContextNative<T>
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     fn default() -> Self {
         Self::new(false)
     }
 }
 
+impl<T> Conn for ContextNative<T>
+where
+    T: AsBytes + FromBytes + Debug,
+{
+    fn get_conn(&self) -> &Connector<Data> {
+        self.conn.as_ref().unwrap()
+    }
+}
+
 impl<T> BaseCrypto<T> for ContextNative<T>
 where
-    T: AsBytes + Debug,
+    T: AsBytes + FromBytes + Debug,
 {
     fn key_generate(&mut self) {
         self.key.clear();

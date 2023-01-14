@@ -9,8 +9,8 @@ use rand_core::OsRng;
 use crate::{
     db::{Connector, Data},
     fse::{
-        AsBytes, BaseCrypto, FreqType, HistType, PartitionFrequencySmoothing,
-        Random, ValueType, DEFAULT_RANDOM_LEN,
+        AsBytes, BaseCrypto, Conn, FreqType, FromBytes, HistType,
+        PartitionFrequencySmoothing, Random, ValueType, DEFAULT_RANDOM_LEN,
     },
     util::{build_histogram, build_histogram_vec, SizeAllocateed},
 };
@@ -132,7 +132,14 @@ where
 #[derive(Debug, Clone)]
 pub struct ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
 {
     /// Is this context fully initialized?
     is_ready: bool,
@@ -161,7 +168,14 @@ where
 
 impl<T> ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
@@ -206,15 +220,34 @@ where
             self.conn = Some(conn);
         }
     }
+}
 
-    pub fn get_conn(&self) -> &Option<Connector<Data>> {
-        &self.conn
+impl<T> Conn for ContextPFSE<T>
+where
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
+{
+    fn get_conn(&self) -> &Connector<Data> {
+        self.conn.as_ref().unwrap()
     }
 }
 
 impl<T> Default for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
 {
     fn default() -> Self {
         Self {
@@ -235,7 +268,14 @@ where
 
 impl<T> BaseCrypto<T> for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
@@ -329,7 +369,14 @@ where
 
 impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash + AsBytes + Eq + Debug + Clone + Random + SizeAllocateed,
+    T: Hash
+        + AsBytes
+        + FromBytes
+        + Eq
+        + Debug
+        + Clone
+        + Random
+        + SizeAllocateed,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;

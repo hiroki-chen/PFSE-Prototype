@@ -10,7 +10,7 @@ use std::{
 
 use csv::ReaderBuilder;
 use rand_core::OsRng;
-use rand_distr::{Distribution, Normal};
+use rand_distr::{Distribution, Normal, Zipf};
 
 use crate::{
     fse::{HistType, Random, ValueType, DEFAULT_RANDOM_LEN},
@@ -187,6 +187,15 @@ where
 {
     let normal = Normal::new(mean as f64, deviation).unwrap();
     generate_dataset(normal, support)
+}
+
+/// Generate a synthetic dataset from a Zipf distribution for testing.
+pub fn generate_synthetic_zipf<T>(support: &[T], s: f64) -> Vec<T>
+where
+    T: Clone,
+{
+    let zipf = Zipf::new(support.len() as u64, s).unwrap();
+    generate_dataset(zipf, support)
 }
 
 fn generate_dataset<T>(dist: impl Distribution<f64>, support: &[T]) -> Vec<T>

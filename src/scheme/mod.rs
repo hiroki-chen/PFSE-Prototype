@@ -6,7 +6,7 @@ use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::{OsRng, RngCore};
 
 use crate::{
-    fse::{AsBytes, Random},
+    fse::{AsBytes, FromBytes, Random},
     util::SizeAllocateed,
 };
 
@@ -34,6 +34,20 @@ impl AsBytes for String {
     #[inline(always)]
     fn as_bytes(&self) -> &[u8] {
         self.as_bytes()
+    }
+}
+
+impl FromBytes for String {
+    #[inline(always)]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+}
+
+impl FromBytes for i32 {
+    #[inline(always)]
+    fn from_bytes(bytes: &[u8]) -> Self {
+        Self::from_ne_bytes(bytes.clone().try_into().unwrap())
     }
 }
 
