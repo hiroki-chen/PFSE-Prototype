@@ -9,6 +9,9 @@ edition = "2021"
 clap = { version = "4.1.1", features = ["derive"] }
 env_logger = "0.10.0"
 fse = { path = ".." }
+itertools = "0.10.5"
 log = "0.4.17"
+rand = "0.8.5"
+rand_core = "0.6.4"
 serde = { version = "1.0.152", features = ["derive"] }
 toml = "0.5.10"

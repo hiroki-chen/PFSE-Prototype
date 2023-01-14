@@ -9,6 +9,7 @@
 "attack_type" = "lp_optimization"
 "data_path" = "../data/test.csv"
 "attributes" = [ "order_number" ]
-"fse_params" = [ 2e-10, 0.25, 1.0 ]
+"fse_params" = [ 0.25, 1.0, 2e-6 ]
 "size" = 10000
 "p_norm" = 4
+"shuffle" = true

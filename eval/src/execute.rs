@@ -2,11 +2,15 @@ use std::{collections::HashMap, fs::File, hash::Hash, io::Read};
 
 use fse::{
     attack::{AttackType, LpAttacker, MLEAttacker},
-    fse::{BaseCrypto, ValueType},
+    fse::{exponential, BaseCrypto, PartitionFrequencySmoothing, ValueType},
     native::ContextNative,
+    pfse::ContextPFSE,
     util::{compute_ciphertext_weight, read_csv_multiple},
 };
+use itertools::Itertools;
 use log::{info, warn};
+use rand::seq::SliceRandom;
+use rand_core::OsRng;
 use serde::Deserialize;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -40,6 +44,7 @@ struct Config {
     fse_type: FSEType,
     attack_type: AttackType,
     data_path: String,
+    shuffle: bool,
     /// None ==> all attributes.
     attributes: Option<Vec<String>>,
     fse_params: Option<Vec<f64>>,
@@ -59,10 +64,14 @@ pub fn execute_attack(config_path: &str) -> Result<()> {
         return Err("Unsupported feature for `all`...".into());
     }
 
-    let dataset = read_csv_multiple(
+    let mut dataset = read_csv_multiple(
         &config.data_path,
         config.attributes.as_ref().unwrap().as_slice(),
     )?;
+
+    if config.shuffle {
+        dataset.iter_mut().for_each(|v| v.shuffle(&mut OsRng))
+    }
 
     do_attack(&config, &dataset)
 }
@@ -121,11 +130,56 @@ fn collect_meta(
         FSEType::Dte | FSEType::Rnd => {
             collect_meta_native(&config.fse_type, &data[..size])
         }
+        FSEType::Pfse => collect_meta_pfse(config, data),
 
         _ => {
             todo!()
         }
     }
+}
+
+fn collect_meta_pfse(
+    config: &Config,
+    data: &[String],
+) -> Result<AttackMeta<String>> {
+    let params = match &config.fse_params {
+        Some(params) => params,
+        None => return Err("Parameter not found.".into()),
+    };
+
+    if params.len() != 3 {
+        return Err(format!(
+            "Parameter size is not correct. Expect 3, but got {}.",
+            params.len()
+        )
+        .into());
+    }
+
+    let mut ctx = ContextPFSE::default();
+    ctx.key_generate();
+    ctx.set_params(params[0], params[1], params[2]);
+    ctx.partition(data, &exponential);
+    ctx.transform();
+
+    let mut raw_ciphertexts = Vec::new();
+    let mut ciphertext_sets = Vec::new();
+    let mut correct = HashMap::new();
+
+    for message in data.clone().into_iter().dedup() {
+        let mut ciphertext = ctx.encrypt(message).unwrap();
+        correct.insert(message.clone(), {
+            ciphertext.clone().into_iter().dedup().collect::<Vec<_>>()
+        });
+        ciphertext_sets.push(ciphertext.clone());
+        raw_ciphertexts.append(&mut ciphertext);
+    }
+
+    Ok(AttackMeta {
+        correct,
+        raw_ciphertexts,
+        local_table: ctx.get_local_table().clone(),
+        ciphertext_weight: compute_ciphertext_weight(&ciphertext_sets),
+    })
 }
 
 fn collect_meta_native(
@@ -152,10 +206,11 @@ fn collect_meta_native(
         };
         raw_ciphertexts.append(&mut ciphertext.clone());
         ciphertext_sets.push(ciphertext.clone());
-        let entry = correct
+        correct
             .entry(message.clone())
-            .or_insert_with(|| ciphertext.clone());
-        entry.dedup();
+            .or_insert_with(|| ciphertext.clone())
+            .iter_mut()
+            .dedup();
         let entry = local_table
             .entry(message.clone())
             .or_insert_with(|| vec![(0usize, 0usize, 0usize)]);
