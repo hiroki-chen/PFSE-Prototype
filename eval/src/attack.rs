@@ -1,5 +1,11 @@
-use std::{collections::HashMap, fs::File, hash::Hash, io::Read};
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    hash::Hash,
+    io::{Read, Write},
+};
 
+use chrono::{DateTime, Local};
 use fse::{
     attack::{AttackType, LpAttacker, MLEAttacker},
     fse::{exponential, BaseCrypto, PartitionFrequencySmoothing, ValueType},
@@ -8,11 +14,11 @@ use fse::{
     pfse::ContextPFSE,
     util::{compute_ciphertext_weight, read_csv_multiple},
 };
-use itertools::Itertools;
+use itertools::{cloned, Itertools};
 use log::{info, warn};
 use rand::seq::SliceRandom;
 use rand_core::OsRng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -28,7 +34,7 @@ where
     ciphertext_weight: HashMap<Vec<u8>, f64>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
 #[serde(rename_all = "snake_case")]
 enum FSEType {
     Dte,
@@ -39,7 +45,7 @@ enum FSEType {
     Pfse,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 struct Config {
     fse_type: FSEType,
@@ -53,45 +59,90 @@ struct Config {
     size: Option<usize>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+struct AttackResult {
+    accuracy: f64,
+    column_name: String,
+    config: Config,
+}
+
 /// Execute the attack given the CLI arguments.
 pub fn execute_attack(config_path: &str) -> Result<()> {
     // Parse the toml.
     let mut file = File::open(config_path)?;
     let mut content = Vec::new();
     file.read_to_end(&mut content)?;
-    let config = toml::from_slice::<Config>(&content)?;
 
-    if config.attributes.is_none() {
-        return Err("Unsupported feature for `all`...".into());
+    let date = Local::now();
+    let test_suites =
+        toml::from_slice::<HashMap<String, Vec<Config>>>(&content)?
+            .remove("test_suites")
+            .unwrap();
+    let mut res = Vec::new();
+    for (idx, config) in test_suites.into_iter().enumerate() {
+        info!(
+            "#{:<04}: Doing attack evaluations...\n{:#?}",
+            idx + 1,
+            config
+        );
+
+        if config.attributes.is_none() {
+            return Err("Unsupported feature for `all`...".into());
+        }
+
+        let mut dataset = read_csv_multiple(
+            &config.data_path,
+            config.attributes.as_ref().unwrap().as_slice(),
+        )?;
+
+        if config.shuffle {
+            dataset.iter_mut().for_each(|v| v.shuffle(&mut OsRng))
+        }
+
+        info!("Dataset read finished.");
+
+        for (idx, &accuracy) in do_attack(&config, &dataset)?.iter().enumerate()
+        {
+            let column_name = config
+                .attributes
+                .as_ref()
+                .unwrap()
+                .get(idx)
+                .unwrap()
+                .clone();
+            res.push(AttackResult {
+                config: config.clone(),
+                column_name,
+                accuracy,
+            })
+        }
     }
 
-    let mut dataset = read_csv_multiple(
-        &config.data_path,
-        config.attributes.as_ref().unwrap().as_slice(),
-    )?;
-
-    if config.shuffle {
-        dataset.iter_mut().for_each(|v| v.shuffle(&mut OsRng))
-    }
-
-    info!("Dataset read finished.");
-    do_attack(&config, &dataset)
+    // Store the attack result.
+    let mut f = File::create(format!("./data/attack_{:?}", date))?;
+    let content = toml::to_vec(&res)?;
+    Ok(f.write_all(&content)?)
 }
 
-fn do_attack(config: &Config, dataset: &[Vec<String>]) -> Result<()> {
+fn do_attack(config: &Config, dataset: &[Vec<String>]) -> Result<Vec<f64>> {
+    let mut res = Vec::new();
+
     for data in dataset.iter() {
-        let rate = match config.attack_type {
+        let accuracy = match config.attack_type {
             AttackType::LpOptimization => lp_optimization(config, data)?,
             AttackType::MleAttack => mle_attack(config, data)?,
         };
 
         warn!(
             "[+] Attack {:?} finished against {:?}. The accuracy is {}.",
-            config.attack_type, config.fse_type, rate
+            config.attack_type, &config.fse_type, accuracy
         );
+
+        res.push(accuracy);
     }
 
-    Ok(())
+    Ok(res)
 }
 
 fn mle_attack(config: &Config, data: &[String]) -> Result<f64> {
@@ -189,9 +240,7 @@ fn collect_meta_lpfse(
         let mut local_table = HashMap::new();
         for (message, count) in ctx.get_encoder().local_table().iter() {
             let ciphertexts = match ciphertext_sets.get(message) {
-                Some(v) => {
-                    v.iter().unique().map(|e| e.clone()).collect::<Vec<_>>()
-                }
+                Some(v) => v.iter().unique().cloned().collect::<Vec<_>>(),
                 None => {
                     return Err(
                         "Message not found in the ciphertext sets map.".into()

@@ -8,14 +8,14 @@ use pathfinding::{
     kuhn_munkres::kuhn_munkres_min,
     prelude::{Matrix, Weights},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     fse::{HistType, Random, ValueType},
     util::{build_histogram, build_histogram_vec, intersect, pad_auxiliary},
 };
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum AttackType {
     LpOptimization,

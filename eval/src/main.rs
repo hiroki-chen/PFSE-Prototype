@@ -1,6 +1,6 @@
 //! todo: Test security against inference attacks.
 #![allow(unused)]
-mod execute;
+mod attack;
 
 use clap::Parser;
 use log::{error, info};
@@ -20,7 +20,7 @@ fn main() {
     env_logger::init();
 
     let args = Args::parse();
-    if let Err(e) = execute::execute_attack(&args.config_path) {
+    if let Err(e) = attack::execute_attack(&args.config_path) {
         error!("Failed to execute the attack due to {}", e);
     }
 
