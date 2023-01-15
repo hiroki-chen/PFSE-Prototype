@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// A helper trait that defines an interface used to calculate the allocated size of an object.
-pub trait SizeAllocateed {
+pub trait SizeAllocated {
     fn size_allocated(&self) -> usize;
 }
 
@@ -188,12 +188,15 @@ where
 
 /// For attacker only. This function computes the weight of each ciphertext in their **own** ciphertext set.
 #[cfg(feature = "attack")]
-pub fn compute_ciphertext_weight(
-    ciphertext_sets: &[Vec<Vec<u8>>],
-) -> HashMap<Vec<u8>, f64> {
+pub fn compute_ciphertext_weight<T>(
+    correct: &HashMap<T, Vec<Vec<u8>>>,
+) -> HashMap<Vec<u8>, f64>
+where
+    T: Eq + Hash,
+{
     let mut weight_map = HashMap::new();
 
-    for ciphertext_set in ciphertext_sets.iter() {
+    for (_, ciphertext_set) in correct.iter() {
         let sum = ciphertext_set.len();
         for ciphertext in ciphertext_set.iter() {
             let count =

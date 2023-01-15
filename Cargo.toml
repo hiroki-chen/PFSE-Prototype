@@ -10,6 +10,7 @@ aes-gcm = "0.10.1"
 base64 = "0.21.0"
 criterion = "0.4.0"
 csv = "1.1.6"
+dyn-clone = "1.0.10"
 mongodb = { version = "2.3.1", features = ["sync"], default-features = false }
 num-traits = "0.2.15"
 pathfinding = "4.2.0"

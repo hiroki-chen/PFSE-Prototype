@@ -6,14 +6,14 @@ use mongodb::bson::Document;
 
 use crate::{
     db::{Connector, Data},
-    util::SizeAllocateed,
+    util::SizeAllocated,
 };
 
 pub type HistType<T> = (T, usize);
 pub type FreqType<T> = (T, f64);
 pub type ValueType = (usize, usize, usize);
 
-impl SizeAllocateed for ValueType {
+impl SizeAllocated for ValueType {
     fn size_allocated(&self) -> usize {
         std::mem::size_of::<Self>()
     }
@@ -52,7 +52,7 @@ where
     fn key_generate(&mut self);
 
     /// Encrypt the message and return the ciphertext vector. Return `None` if error occurrs.
-    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>>;
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>>;
 
     /// Decrypt the ciphertext and return the plaintext. Return `None` if error occurrs.
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>>;
@@ -68,7 +68,7 @@ where
     }
 
     /// Search a given message `T` from the remote server.
-    fn search(&self, message: &T, name: &str) -> Option<Vec<T>> {
+    fn search(&mut self, message: &T, name: &str) -> Option<Vec<T>> {
         let mut encrypted_message = match self.encrypt(message) {
             Some(v) => v,
             None => return None,

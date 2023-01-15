@@ -12,7 +12,7 @@ use crate::{
     fse::{AsBytes, BaseCrypto, Conn, FromBytes},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContextNative<T>
 where
     T: AsBytes + FromBytes + Debug,
@@ -79,7 +79,7 @@ where
         self.key = Aes256Gcm::generate_key(OsRng).to_vec();
     }
 
-    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {

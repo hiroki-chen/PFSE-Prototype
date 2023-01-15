@@ -7,7 +7,7 @@ use rand_core::{OsRng, RngCore};
 
 use crate::{
     fse::{AsBytes, FromBytes, Random},
-    util::SizeAllocateed,
+    util::SizeAllocated,
 };
 
 pub mod lpfse;
@@ -65,28 +65,34 @@ impl AsBytes for i32 {
     }
 }
 
-impl SizeAllocateed for String {
+impl SizeAllocated for String {
     fn size_allocated(&self) -> usize {
         self.len()
     }
 }
 
-impl SizeAllocateed for usize {
+impl SizeAllocated for usize {
     fn size_allocated(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-impl SizeAllocateed for u8 {
+impl SizeAllocated for u8 {
     fn size_allocated(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-impl<K, V> SizeAllocateed for HashMap<K, V>
+impl SizeAllocated for u64 {
+    fn size_allocated(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl<K, V> SizeAllocated for HashMap<K, V>
 where
-    K: SizeAllocateed,
-    V: SizeAllocateed,
+    K: SizeAllocated,
+    V: SizeAllocated,
 {
     fn size_allocated(&self) -> usize {
         self.iter()
@@ -95,20 +101,30 @@ where
     }
 }
 
-impl<T> SizeAllocateed for Vec<T>
+impl<T> SizeAllocated for Vec<T>
 where
-    T: SizeAllocateed,
+    T: SizeAllocated,
 {
     fn size_allocated(&self) -> usize {
         self.iter().map(|e| e.size_allocated()).sum::<usize>()
     }
 }
 
-impl<T> SizeAllocateed for [T]
+impl<T> SizeAllocated for [T]
 where
-    T: SizeAllocateed,
+    T: SizeAllocated,
 {
     fn size_allocated(&self) -> usize {
         self.iter().map(|e| e.size_allocated()).sum::<usize>()
+    }
+}
+
+impl<T, U> SizeAllocated for (T, U)
+where
+    T: SizeAllocated,
+    U: SizeAllocated,
+{
+    fn size_allocated(&self) -> usize {
+        self.0.size_allocated() + self.1.size_allocated()
     }
 }

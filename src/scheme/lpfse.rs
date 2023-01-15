@@ -10,13 +10,14 @@ use std::{
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
+use dyn_clone::{clone_box, clone_trait_object, DynClone};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
 use crate::{
     db::{Connector, Data},
     fse::{AsBytes, BaseCrypto, Conn, FromBytes, HistType, ValueType},
-    util::{build_histogram, build_histogram_vec, compute_cdf, SizeAllocateed},
+    util::{build_histogram, build_histogram_vec, compute_cdf, SizeAllocated},
 };
 
 /// A context that represents the frequency-smoothing encryption scheme proposed by Lachrite and Paterson.
@@ -27,7 +28,7 @@ use crate::{
 #[derive(Debug)]
 pub struct ContextLPFSE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     /// The advantage of an optimal distinguisher that utilizes the K-S test.
     advantage: f64,
@@ -39,31 +40,45 @@ where
     conn: Option<Connector<Data>>,
 }
 
-/// A trait that defines a generic bahavior of encoders.
-pub trait HomophoneEncoder<T>: Debug + SizeAllocateed
+impl<T> Clone for ContextLPFSE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
+{
+    fn clone(&self) -> Self {
+        Self {
+            advantage: self.advantage,
+            key: self.key.clone(),
+            encoder: clone_box(&*self.encoder),
+            conn: self.conn.clone(),
+        }
+    }
+}
+
+/// A trait that defines a generic bahavior of encoders.
+pub trait HomophoneEncoder<T>: Debug + SizeAllocated + DynClone
+where
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     /// Initialize the encoder.
     fn initialize(&mut self, _messages: &[T], _advantage: f64);
 
     /// Encode the message and returns one of the homophones from its homophone set.
-    fn encode(&self, message: &T) -> Option<Vec<u8>>;
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>>;
 
     /// Decode the message. Note we do not return `T` directly.
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>>;
 
     /// Collect the local table for attack.
-    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
-        unimplemented!()
-    }
+    fn local_table(&self) -> HashMap<T, Vec<ValueType>>;
 }
+
+clone_trait_object!(<T> HomophoneEncoder<T> where T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated);
 
 /// The encoder for IHBE.
 #[derive(Debug, Clone)]
 pub struct EncoderIHBE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     /// Stores the frequency and interval for each message. Not used after initialization.
     local_table: HashMap<T, (usize, Range<u64>)>,
@@ -73,21 +88,22 @@ where
 #[derive(Debug, Clone)]
 pub struct EncoderBHE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     /// The length of the band.
     length: usize,
     /// The width of the band.
     width: f64,
     /// The temporary frequency table.
-    histogram: HashMap<T, usize>,
+    /// T -> <count, set>
+    local_table: HashMap<T, (usize, Vec<u64>)>,
     /// A dummy data that consumes `T`.
     _marker: PhantomData<T>,
 }
 
 impl<T> EncoderIHBE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     pub fn new() -> Self {
         Self {
@@ -143,25 +159,21 @@ where
 
 impl<T> EncoderBHE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     pub fn new() -> Self {
         Self {
             length: 0,
             width: 0f64,
-            histogram: HashMap::new(),
+            local_table: HashMap::new(),
             _marker: PhantomData,
         }
-    }
-
-    pub fn get_histogram(&self) -> &HashMap<T, usize> {
-        &self.histogram
     }
 }
 
 impl<T> Default for EncoderIHBE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn default() -> Self {
         Self::new()
@@ -170,28 +182,28 @@ where
 
 impl<T> Default for EncoderBHE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> SizeAllocateed for EncoderBHE<T>
+impl<T> SizeAllocated for EncoderBHE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn size_allocated(&self) -> usize {
-        self.histogram
+        self.local_table
             .iter()
             .map(|(k, v)| k.size_allocated() + (*v).size_allocated())
             .sum::<usize>()
     }
 }
 
-impl<T> SizeAllocateed for EncoderIHBE<T>
+impl<T> SizeAllocated for EncoderIHBE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     /// No extra space allocated.
     fn size_allocated(&self) -> usize {
@@ -201,7 +213,7 @@ where
 
 impl<T> HomophoneEncoder<T> for EncoderIHBE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -244,7 +256,7 @@ where
         }
     }
 
-    fn encode(&self, message: &T) -> Option<Vec<u8>> {
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
         match self.local_table.get(message) {
             Some((_, interval)) => {
                 let homophone = Uniform::new(interval.start, interval.end)
@@ -281,7 +293,7 @@ where
 
 impl<T> HomophoneEncoder<T> for EncoderBHE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn initialize(&mut self, messages: &[T], advantage: f64) {
         if messages.is_empty() {
@@ -289,9 +301,8 @@ where
         }
 
         // Get the histogram of the messages.
-        self.histogram = build_histogram(messages);
-        let most_frequent = self
-            .histogram
+        let histogram = build_histogram(messages);
+        let most_frequent = histogram
             .iter()
             .max_by(|lhs, rhs| lhs.1.cmp(rhs.1))
             .map(|(_, v)| *v)
@@ -308,14 +319,23 @@ where
             }
         };
         self.width = most_frequent as f64 / (n * 2f64.powf(self.length as f64));
+
+        self.local_table = histogram
+            .into_iter()
+            .map(|(k, v)| (k, (v, vec![])))
+            .collect();
     }
 
-    fn encode(&self, message: &T) -> Option<Vec<u8>> {
-        match self.histogram.get(message) {
-            Some(&frequency) => {
+    fn encode(&mut self, message: &T) -> Option<Vec<u8>> {
+        match self.local_table.get_mut(message) {
+            Some((frequency, set)) => {
                 // Compute message m’s frequency band.
-                let band = (frequency as f64 / self.width).ceil() as u64;
+                let band = (*frequency as f64 / self.width).ceil() as u64;
                 let homophone = Uniform::new(0, band).sample(&mut OsRng);
+
+                if set.iter().find(|&e| *e == homophone).is_none() {
+                    set.push(homophone);
+                }
 
                 // Construct m as m || t.
                 let mut encoded_message = Vec::new();
@@ -332,11 +352,18 @@ where
         // Simply truncate the last l-bits.
         Some(message[..message.len() - std::mem::size_of::<u64>() - 1].to_vec())
     }
+
+    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
+        self.local_table
+            .iter()
+            .map(|(k, v)| (k.clone(), vec![(0, v.1.len(), v.0)]))
+            .collect()
+    }
 }
 
 impl<T> ContextLPFSE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     pub fn new(advantage: f64, encoder: Box<dyn HomophoneEncoder<T>>) -> Self {
         Self {
@@ -370,7 +397,7 @@ where
 
 impl<T> Conn for ContextLPFSE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
@@ -379,13 +406,13 @@ where
 
 impl<T> BaseCrypto<T> for ContextLPFSE<T>
 where
-    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocateed,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
         let mut ciphertexts = Vec::new();
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,

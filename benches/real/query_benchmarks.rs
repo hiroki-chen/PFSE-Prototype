@@ -56,7 +56,7 @@ fn dte_bench_on_real(c: &mut Criterion) {
                     // Randomly select a message and search for it.
                     let idx = Uniform::new(0, size).sample(&mut OsRng);
                     let message = &slice[idx];
-                    ctx.search(message, DTE_COLLECTION);
+                    ctx.clone().search(message, DTE_COLLECTION);
                 })
             },
         );
@@ -102,7 +102,7 @@ fn pfse_bench_on_real(c: &mut Criterion) {
                         // Randomly select a message and search for it.
                         let idx = Uniform::new(0, size).sample(&mut OsRng);
                         let message = &slice[idx];
-                        ctx.search(message, DTE_COLLECTION);
+                        ctx.clone().search(message, DTE_COLLECTION);
                     })
                 },
             );

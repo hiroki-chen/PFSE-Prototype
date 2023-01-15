@@ -12,7 +12,7 @@ use crate::{
         AsBytes, BaseCrypto, Conn, FreqType, FromBytes, HistType,
         PartitionFrequencySmoothing, Random, ValueType, DEFAULT_RANDOM_LEN,
     },
-    util::{build_histogram, build_histogram_vec, SizeAllocateed},
+    util::{build_histogram, build_histogram_vec, SizeAllocated},
 };
 
 /// This struct defines the parameter pair that can be used to transform each partition `G_i`.
@@ -139,7 +139,7 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     /// Is this context fully initialized?
     is_ready: bool,
@@ -175,7 +175,7 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
@@ -231,7 +231,7 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
@@ -247,7 +247,7 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     fn default() -> Self {
         Self {
@@ -275,13 +275,13 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
     }
 
-    fn encrypt(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+    fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
         let value = match self.local_table.get(message) {
             Some(v) => v,
             None => return None,
@@ -376,7 +376,7 @@ where
         + Debug
         + Clone
         + Random
-        + SizeAllocateed,
+        + SizeAllocated,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;
@@ -536,7 +536,8 @@ where
     fn smooth(&mut self) -> Vec<Vec<u8>> {
         let mut ciphertexts = Vec::new();
 
-        for partition in self.partitions.iter() {
+        // Temporarily clone this thing to prevent multiple borrows to `self`.
+        for partition in self.partitions.clone().into_iter() {
             for (message, cnt) in partition.inner.iter() {
                 if let Some(mut c) = self.encrypt(message) {
                     ciphertexts.append(&mut c);

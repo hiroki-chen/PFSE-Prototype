@@ -9,7 +9,7 @@ use mongodb::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{util::SizeAllocateed, Result};
+use crate::{util::SizeAllocated, Result};
 
 /// A sample data store.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -18,7 +18,7 @@ pub struct Data {
     pub data: String,
 }
 
-impl SizeAllocateed for Data {
+impl SizeAllocated for Data {
     fn size_allocated(&self) -> usize {
         std::mem::size_of::<usize>() + self.data.len()
     }
