@@ -1,7 +1,7 @@
 use criterion::{criterion_group, BenchmarkId, Criterion, Throughput};
 use fse::{
     db::Data,
-    fse::{exponential, BaseCrypto, PartitionFrequencySmoothing, Conn},
+    fse::{exponential, BaseCrypto, Conn, PartitionFrequencySmoothing},
     lpfse::{ContextLPFSE, EncoderBHE, EncoderIHBE},
     native::ContextNative,
     pfse::ContextPFSE,

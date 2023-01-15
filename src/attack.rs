@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
+use log::error;
 use pathfinding::{
     kuhn_munkres::kuhn_munkres_min,
     prelude::{Matrix, Weights},
@@ -137,7 +138,7 @@ where
 
         // Check if the histogram sizes match with each other.
         if auxiliary.len() != ciphertexts.len() {
-            println!("[-] Sorry, the length does not match. Please pad auxiliary dataset first or check if auxiliary.len() > ciphertext.len().");
+            error!("Sorry, the length does not match. Please pad auxiliary dataset first or check if auxiliary.len() > ciphertext.len(). auxiliary.len() = {}, ciphertext.len() = {}", auxiliary.len(), ciphertexts.len());
             return cost_matrix;
         }
 

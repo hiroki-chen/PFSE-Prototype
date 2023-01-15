@@ -52,7 +52,8 @@ mod scheme_tests {
             fse::BaseCrypto,
             lpfse::{ContextLPFSE, EncoderIHBE},
         };
-        let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
+        let mut vec =
+            read_csv_exact("./data/test.csv", "order_number").unwrap();
         vec.sort();
         let mut ctx =
             ContextLPFSE::new(2f64.powf(-10_f64), Box::new(EncoderIHBE::new()));
@@ -83,7 +84,8 @@ mod scheme_tests {
             lpfse::{ContextLPFSE, EncoderBHE},
         };
 
-        let mut vec = read_csv_exact("./data/test.csv", "order_number").unwrap();
+        let mut vec =
+            read_csv_exact("./data/test.csv", "order_number").unwrap();
         vec.sort();
         let mut ctx =
             ContextLPFSE::new(2f64.powf(-10_f64), Box::new(EncoderBHE::new()));

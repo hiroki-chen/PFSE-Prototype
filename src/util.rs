@@ -9,6 +9,7 @@ use std::{
 };
 
 use csv::{Reader, ReaderBuilder};
+use log::error;
 use rand_core::OsRng;
 use rand_distr::{Distribution, Normal, Zipf};
 
@@ -137,7 +138,7 @@ pub fn compute_cdf<T>(
     num: usize,
 ) -> f64 {
     if index >= histogram.len() {
-        println!("[-] Index {} out of bound!", index);
+        error!("Index {} out of bound!", index);
         return 0f64;
     }
 
@@ -185,18 +186,14 @@ where
 
     intersection
 }
-
 /// For attacker only. This function computes the weight of each ciphertext in their **own** ciphertext set.
 #[cfg(feature = "attack")]
-pub fn compute_ciphertext_weight<T>(
-    correct: &HashMap<T, Vec<Vec<u8>>>,
-) -> HashMap<Vec<u8>, f64>
-where
-    T: Eq + Hash,
-{
+pub fn compute_ciphertext_weight(
+    ciphertext_sets: &[Vec<Vec<u8>>],
+) -> HashMap<Vec<u8>, f64> {
     let mut weight_map = HashMap::new();
 
-    for (_, ciphertext_set) in correct.iter() {
+    for ciphertext_set in ciphertext_sets.iter() {
         let sum = ciphertext_set.len();
         for ciphertext in ciphertext_set.iter() {
             let count =

@@ -132,14 +132,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     /// Is this context fully initialized?
     is_ready: bool,
@@ -168,14 +161,7 @@ where
 
 impl<T> ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     pub fn ready(&self) -> bool {
         self.is_ready
@@ -224,14 +210,7 @@ where
 
 impl<T> Conn for ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
@@ -240,14 +219,7 @@ where
 
 impl<T> Default for ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     fn default() -> Self {
         Self {
@@ -268,14 +240,7 @@ where
 
 impl<T> BaseCrypto<T> for ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     fn key_generate(&mut self) {
         self.key = Aes256Gcm::generate_key(&mut OsRng).to_vec();
@@ -369,14 +334,7 @@ where
 
 impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
-    T: Hash
-        + AsBytes
-        + FromBytes
-        + Eq
-        + Debug
-        + Clone
-        + Random
-        + SizeAllocated,
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
         self.p_partition = lambda;
@@ -522,7 +480,17 @@ where
                     n_i, sum
                 ),
             };
-            for _ in sum + 1..=delta {
+
+            log::debug!(
+                "# {}... sum = {}, ni = {}, k_second = {}, alpha = {}.",
+                index,
+                sum,
+                n_i,
+                k_prime_second,
+                alpha
+            );
+
+            for _ in sum..delta {
                 // Insert dummy values.
                 let dummy = T::random(DEFAULT_RANDOM_LEN);
 

@@ -11,6 +11,7 @@ use std::{
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use dyn_clone::{clone_box, clone_trait_object, DynClone};
+use log::{error, warn};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
@@ -19,6 +20,8 @@ use crate::{
     fse::{AsBytes, BaseCrypto, Conn, FromBytes, HistType, ValueType},
     util::{build_histogram, build_histogram_vec, compute_cdf, SizeAllocated},
 };
+
+type IbheKeyType = (usize, Range<u64>);
 
 /// A context that represents the frequency-smoothing encryption scheme proposed by Lachrite and Paterson.
 ///
@@ -69,7 +72,8 @@ where
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>>;
 
     /// Collect the local table for attack.
-    fn local_table(&self) -> HashMap<T, Vec<ValueType>>;
+    /// This is mainly the message -> freq table :)
+    fn local_table(&self) -> HashMap<T, usize>;
 }
 
 clone_trait_object!(<T> HomophoneEncoder<T> where T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated);
@@ -80,8 +84,8 @@ pub struct EncoderIHBE<T>
 where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
 {
-    /// Stores the frequency and interval for each message. Not used after initialization.
-    local_table: HashMap<T, (usize, Range<u64>)>,
+    /// Message -> <cnt, range>
+    local_table: HashMap<T, IbheKeyType>,
 }
 
 /// The encoder for BHE.
@@ -280,13 +284,10 @@ where
         )
     }
 
-    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
+    fn local_table(&self) -> HashMap<T, usize> {
         self.local_table
             .iter()
-            .map(|(k, v)| {
-                let size = (v.1.end - v.1.start) as usize;
-                (k.clone(), vec![(0usize, v.0, size)])
-            })
+            .map(|(k, v)| (k.clone(), v.0))
             .collect()
     }
 }
@@ -314,7 +315,7 @@ where
         self.length = match log2.checked_sub(1) {
             Some(v) => v,
             None => {
-                println!("[-] Invalid length: {}", log2);
+                error!("Invalid length: {}", log2);
                 return;
             }
         };
@@ -333,7 +334,7 @@ where
                 let band = (*frequency as f64 / self.width).ceil() as u64;
                 let homophone = Uniform::new(0, band).sample(&mut OsRng);
 
-                if set.iter().find(|&e| *e == homophone).is_none() {
+                if set.iter().any(|&e| e == homophone) {
                     set.push(homophone);
                 }
 
@@ -353,10 +354,10 @@ where
         Some(message[..message.len() - std::mem::size_of::<u64>() - 1].to_vec())
     }
 
-    fn local_table(&self) -> HashMap<T, Vec<ValueType>> {
+    fn local_table(&self) -> HashMap<T, usize> {
         self.local_table
             .iter()
-            .map(|(k, v)| (k.clone(), vec![(0, v.1.len(), v.0)]))
+            .map(|(k, v)| (k.clone(), v.0))
             .collect()
     }
 }
@@ -417,8 +418,8 @@ where
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                println!(
-                    "[-] Error constructing the AES context due to {:?}.",
+                error!(
+                    "Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
                 return None;
@@ -428,7 +429,7 @@ where
         let homophone = match self.encoder.encode(message) {
             Some(h) => h,
             None => {
-                println!("[-] The requested message does not exist.");
+                warn!("The requested message does not exist.");
                 return None;
             }
         };
@@ -436,8 +437,8 @@ where
         let ciphertext = match aes.encrypt(nonce, homophone.as_slice()) {
             Ok(ciphertext) => ciphertext,
             Err(e) => {
-                println!(
-                    "[-] Error encrypting the message due to {:?}.",
+                error!(
+                    "Error encrypting the message due to {:?}.",
                     e.to_string()
                 );
                 return None;
@@ -468,8 +469,8 @@ where
             match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!(
-                        "[-] Error decoding the base64 string due to {:?}.",
+                    error!(
+                        "Error decoding the base64 string due to {:?}.",
                         e.to_string()
                     );
                     return None;
@@ -478,8 +479,8 @@ where
         let plaintext = match aes.decrypt(nonce, decoded_plaintext.as_slice()) {
             Ok(plaintext) => plaintext,
             Err(e) => {
-                println!(
-                    "[-] Error decrypting the message due to {:?}.",
+                error!(
+                    "Error decrypting the message due to {:?}.",
                     e.to_string()
                 );
                 return None;

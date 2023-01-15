@@ -172,25 +172,52 @@ fn collect_meta_lpfse(
     ctx.initialize(data, "", "", false);
 
     let mut raw_ciphertexts = Vec::new();
-    let mut correct = HashMap::new();
+    let mut ciphertext_sets = HashMap::new();
 
     for message in data.iter() {
         let ciphertext = ctx.encrypt(message).unwrap().remove(0);
-        correct
+        let entry = ciphertext_sets
             .entry(message.clone())
-            .or_insert_with(|| vec![])
-            .push(ciphertext.clone());
-
+            .or_insert_with(Vec::new);
+        entry.push(ciphertext.clone());
         raw_ciphertexts.push(ciphertext);
     }
 
-    let ciphertext_weight = compute_ciphertext_weight(&correct);
-    let local_table = ctx.get_encoder().local_table();
+    // Construct the local table.
+    let mut correct = HashMap::new();
+    let local_table = {
+        let mut local_table = HashMap::new();
+        for (message, count) in ctx.get_encoder().local_table().iter() {
+            let ciphertexts = match ciphertext_sets.get(message) {
+                Some(v) => {
+                    v.iter().unique().map(|e| e.clone()).collect::<Vec<_>>()
+                }
+                None => {
+                    return Err(
+                        "Message not found in the ciphertext sets map.".into()
+                    )
+                }
+            };
+
+            let size = ciphertexts.len();
+            correct.insert(message.clone(), ciphertexts);
+            local_table.insert(message.clone(), vec![(0, size, *count)]);
+        }
+
+        local_table
+    };
+
     Ok(AttackMeta {
         correct,
         local_table,
         raw_ciphertexts,
-        ciphertext_weight,
+        ciphertext_weight: compute_ciphertext_weight(
+            ciphertext_sets
+                .into_iter()
+                .map(|(k, v)| v)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        ),
     })
 }
 
@@ -214,26 +241,31 @@ fn collect_meta_pfse(
     let mut ctx = ContextPFSE::default();
     ctx.key_generate();
     ctx.set_params(params[0], params[1], params[2]);
+
     ctx.partition(data, &exponential);
+    info!("Partition finished.");
+
     ctx.transform();
+    info!("Transform finished.");
 
     let mut raw_ciphertexts = Vec::new();
+    let mut ciphertext_sets = Vec::new();
     let mut correct = HashMap::new();
 
-    for message in data.clone().into_iter().dedup() {
+    for message in data.iter().dedup() {
         let mut ciphertext = ctx.encrypt(message).unwrap();
         correct.insert(message.clone(), {
             ciphertext.clone().into_iter().dedup().collect::<Vec<_>>()
         });
+        ciphertext_sets.push(ciphertext.clone());
         raw_ciphertexts.append(&mut ciphertext);
     }
 
-    let ciphertext_weight = compute_ciphertext_weight(&correct);
     Ok(AttackMeta {
         correct,
         raw_ciphertexts,
         local_table: ctx.get_local_table().clone(),
-        ciphertext_weight,
+        ciphertext_weight: compute_ciphertext_weight(&ciphertext_sets),
     })
 }
 
@@ -246,6 +278,7 @@ fn collect_meta_native(
     ctx.key_generate();
 
     let mut raw_ciphertexts = Vec::new();
+    let mut ciphertext_sets = Vec::new();
     let mut correct = HashMap::new();
     let mut local_table = HashMap::new();
 
@@ -259,6 +292,7 @@ fn collect_meta_native(
             }
         };
         raw_ciphertexts.append(&mut ciphertext.clone());
+        ciphertext_sets.push(ciphertext.clone());
         correct
             .entry(message.clone())
             .or_insert_with(|| ciphertext.clone())
@@ -276,11 +310,10 @@ fn collect_meta_native(
         }
     }
 
-    let ciphertext_weight = compute_ciphertext_weight(&correct);
     Ok(AttackMeta {
         correct,
         local_table,
         raw_ciphertexts,
-        ciphertext_weight,
+        ciphertext_weight: compute_ciphertext_weight(&ciphertext_sets),
     })
 }
