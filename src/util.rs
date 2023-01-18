@@ -186,14 +186,19 @@ where
 
     intersection
 }
+
 /// For attacker only. This function computes the weight of each ciphertext in their **own** ciphertext set.
 #[cfg(feature = "attack")]
-pub fn compute_ciphertext_weight(
-    ciphertext_sets: &[Vec<Vec<u8>>],
-) -> HashMap<Vec<u8>, f64> {
+#[deprecated]
+pub fn compute_ciphertext_weight<T>(
+    ciphertext_sets: &HashMap<T, Vec<Vec<u8>>>,
+) -> HashMap<Vec<u8>, f64>
+where
+    T: Hash + Eq,
+{
     let mut weight_map = HashMap::new();
 
-    for ciphertext_set in ciphertext_sets.iter() {
+    for (_, ciphertext_set) in ciphertext_sets.iter() {
         let sum = ciphertext_set.len();
         for ciphertext in ciphertext_set.iter() {
             let count =

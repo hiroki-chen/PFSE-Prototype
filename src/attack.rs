@@ -56,7 +56,6 @@ where
         correct: &HashMap<T, Vec<Vec<u8>>>,
         local_table: &HashMap<T, Vec<ValueType>>,
         raw_ciphertexts: &[Vec<u8>],
-        ciphertext_weight: &HashMap<Vec<u8>, f64>,
     ) -> f64 {
         // First, build the histograms for the two datasets.
         // Generate auxiliary according to the local table.
@@ -85,12 +84,7 @@ where
 
         // Invoke the Kuhn-Munkres algorithm to find the minimum matching.
         self.assignment = Some(kuhn_munkres_min(&cost_matrix).1);
-        self.get_recovery_rate(
-            correct,
-            &auxiliary,
-            &ciphertexts,
-            ciphertext_weight,
-        )
+        self.get_recovery_rate(correct, &auxiliary, &ciphertexts)
     }
 
     /// Given a correct mapping from plaintext to the ciphertext, calculate the accuracy of the attack.
@@ -99,7 +93,6 @@ where
         correct: &HashMap<T, Vec<Vec<u8>>>,
         auxiliary: &[(T, f64, usize)],
         ciphertexts: &[HistType<Vec<u8>>],
-        ciphertext_weight_map: &HashMap<Vec<u8>, f64>,
     ) -> f64 {
         let mut sum = 0f64;
         let message_num = auxiliary.iter().map(|e| e.2).sum::<usize>();
@@ -111,11 +104,9 @@ where
             let (ciphertext, count) = &ciphertexts.get(*j).unwrap();
 
             if let Some(value) = correct.get(message) {
-                let ciphertext_weight =
-                    ciphertext_weight_map.get(ciphertext).unwrap();
-                sum += value.iter().filter(|&e| e == ciphertext).count() as f64
-                    * ciphertext_weight
-                    * message_weight;
+                let correct_num =
+                    (value.iter().filter(|&e| e == ciphertext).count() as f64);
+                sum += (correct_num / value.len() as f64) * message_weight;
             }
         }
 
@@ -221,7 +212,6 @@ where
         correct: &HashMap<T, Vec<Vec<u8>>>,
         local_table: &HashMap<T, Vec<ValueType>>,
         raw_ciphertexts: &[Vec<u8>],
-        ciphertext_weight: &HashMap<Vec<u8>, f64>,
     ) -> f64 {
         // Generate auxiliary according to the local table.
         let mut message_num = 0;
@@ -250,7 +240,7 @@ where
         let mut cur = 0usize;
         // The left boundary iterator for ciphertext set.
         let mut i = 0usize;
-        while i < ciphertexts.len() {
+        while i < ciphertexts.len() && cur < auxiliary.len() {
             let current_size = auxiliary.get(cur).unwrap().1;
             let ciphertext_set = ciphertexts[i..i + current_size]
                 .iter()
@@ -264,13 +254,7 @@ where
         }
 
         self.assignment = Some(assignment);
-        self.get_recovery_rate(
-            message_num,
-            correct,
-            &auxiliary,
-            &ciphertexts,
-            ciphertext_weight,
-        )
+        self.get_recovery_rate(message_num, correct, &auxiliary, &ciphertexts)
     }
 
     fn get_recovery_rate(
@@ -279,7 +263,6 @@ where
         correct: &HashMap<T, Vec<Vec<u8>>>,
         auxiliary: &[(T, usize, usize)],
         ciphertexts: &[HistType<Vec<u8>>],
-        ciphertext_weight_map: &HashMap<Vec<u8>, f64>,
     ) -> f64 {
         let mut sum = 0f64;
         for (index, assignment) in self.assignment.as_ref().unwrap().iter() {
@@ -290,11 +273,9 @@ where
             // Find the weight of the message.
             let message_weight = *count as f64 / message_num as f64;
             // Find the weight of the ciphertexts.
-            for correct_ciphertext in common.iter() {
-                let ciphertext_weight =
-                    ciphertext_weight_map.get(correct_ciphertext).unwrap();
-                sum += message_weight * ciphertext_weight;
-            }
+            let ciphertext_weight =
+                common.len() as f64 / correct_ciphertexts.len() as f64;
+            sum += message_weight * ciphertext_weight;
         }
 
         sum

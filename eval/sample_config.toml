@@ -4,22 +4,36 @@
 # attributes: Option<Vec<String>>,
 # fse_params: Option<Vec<f64>>,
 # p_norm: Option<u8>,
+[[test_suites]]
+"fse_type" = "lpfse_ihbe"
+"attack_type" = "mle_attack"
+"data_path" = "../data/test.csv"
+"fse_params" = [ 1e-2 ]
+"attributes" = ["order_number"]
+"size" = 100000
+"shuffle" = true
 
 [[test_suites]]
 "fse_type" = "pfse"
 "attack_type" = "mle_attack"
 "data_path" = "../data/test.csv"
-"attributes" = [ "order_number" ]
-"fse_params" = [ 0.25, 1.0, 0.0009765625 ]
-"size" = 10000
+"attributes" = ["order_number"]
+"fse_params" = [0.25, 1.0, 0.03, 1.0]
+"size" = 100000
 "shuffle" = true
 
 [[test_suites]]
-"fse_type" = "lpfse_ihbe"
+"fse_type" = "dte"
 "attack_type" = "mle_attack"
 "data_path" = "../data/test.csv"
-"attributes" = [ "order_number" ]
-"fse_params" = [ 0.0009765625 ]
-"size" = 10000
-"p_norm" = 4
+"attributes" = ["order_number"]
+"size" = 100000
+"shuffle" = true
+
+[[test_suites]]
+"fse_type" = "rnd"
+"attack_type" = "mle_attack"
+"data_path" = "../data/test.csv"
+"attributes" = ["order_number"]
+"size" = 100000
 "shuffle" = true

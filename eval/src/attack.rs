@@ -12,13 +12,15 @@ use fse::{
     lpfse::{ContextLPFSE, EncoderBHE, EncoderIHBE, HomophoneEncoder},
     native::ContextNative,
     pfse::ContextPFSE,
-    util::{compute_ciphertext_weight, read_csv_multiple},
+    util::read_csv_multiple,
 };
 use itertools::{cloned, Itertools};
-use log::{info, warn};
+use log::{debug, info, warn};
 use rand::seq::SliceRandom;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+
+use crate::Args;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -31,7 +33,6 @@ where
     correct: HashMap<T, Vec<Vec<u8>>>,
     local_table: HashMap<T, Vec<ValueType>>,
     raw_ciphertexts: Vec<Vec<u8>>,
-    ciphertext_weight: HashMap<Vec<u8>, f64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
@@ -61,31 +62,40 @@ struct Config {
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-struct AttackResult {
+struct MainResult {
     accuracy: f64,
     column_name: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+struct AttackResult {
+    result: MainResult,
     config: Config,
 }
 
 /// Execute the attack given the CLI arguments.
-pub fn execute_attack(config_path: &str) -> Result<()> {
+pub fn execute_attack(args: &Args) -> Result<()> {
     // Parse the toml.
-    let mut file = File::open(config_path)?;
+    let mut file = File::open(&args.config_path)?;
     let mut content = Vec::new();
     file.read_to_end(&mut content)?;
 
     let date = Local::now();
-    let test_suites =
+    let mut test_suites =
         toml::from_slice::<HashMap<String, Vec<Config>>>(&content)?
             .remove("test_suites")
             .unwrap();
-    let mut res = Vec::new();
+    test_suites.truncate(args.suite_num.unwrap_or(test_suites.len()));
+
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(format!("{}/attack_{:?}.toml", args.output_path, date))?;
+
     for (idx, config) in test_suites.into_iter().enumerate() {
-        info!(
-            "#{:<04}: Doing attack evaluations...\n{:#?}",
-            idx + 1,
-            config
-        );
+        info!("#{:<04}: Doing attack evaluations...", idx + 1,);
+        debug!("The configuration is {:#?}", config);
 
         if config.attributes.is_none() {
             return Err("Unsupported feature for `all`...".into());
@@ -102,7 +112,8 @@ pub fn execute_attack(config_path: &str) -> Result<()> {
 
         info!("Dataset read finished.");
 
-        for (idx, &accuracy) in do_attack(&config, &dataset)?.iter().enumerate()
+        for (idx, &accuracy) in
+            do_attack(args.round, &config, &dataset)?.iter().enumerate()
         {
             let column_name = config
                 .attributes
@@ -111,28 +122,45 @@ pub fn execute_attack(config_path: &str) -> Result<()> {
                 .get(idx)
                 .unwrap()
                 .clone();
-            res.push(AttackResult {
+            let result = AttackResult {
                 config: config.clone(),
-                column_name,
-                accuracy,
-            })
+                result: MainResult {
+                    column_name,
+                    accuracy,
+                },
+            };
+
+            // Store the attack result.
+            let mut toml = HashMap::new();
+            toml.insert("attack_result".to_string(), vec![result]);
+            let content = toml::to_vec(&toml)?;
+            file.write_all(content.as_slice())?;
+            file.write(b"\n")?;
         }
     }
 
-    // Store the attack result.
-    let mut f = File::create(format!("./data/attack_{:?}", date))?;
-    let content = toml::to_vec(&res)?;
-    Ok(f.write_all(&content)?)
+    Ok(())
 }
 
-fn do_attack(config: &Config, dataset: &[Vec<String>]) -> Result<Vec<f64>> {
+fn do_attack(
+    round: usize,
+    config: &Config,
+    dataset: &[Vec<String>],
+) -> Result<Vec<f64>> {
     let mut res = Vec::new();
 
     for data in dataset.iter() {
-        let accuracy = match config.attack_type {
-            AttackType::LpOptimization => lp_optimization(config, data)?,
-            AttackType::MleAttack => mle_attack(config, data)?,
-        };
+        let mut accuracy = 0f64;
+        // Run multiple rounds.
+        for idx in 0..round {
+            info!("Round #{:<04} started.", idx);
+            accuracy += match config.attack_type {
+                AttackType::LpOptimization => lp_optimization(config, data)?,
+                AttackType::MleAttack => mle_attack(config, data)?,
+            };
+            info!("Round #{:<04} finished.", idx);
+        }
+        accuracy /= round as f64;
 
         warn!(
             "[+] Attack {:?} finished against {:?}. The accuracy is {}.",
@@ -150,12 +178,13 @@ fn mle_attack(config: &Config, data: &[String]) -> Result<f64> {
 
     info!("Mounting mle_attack...");
     let mut attacker = MLEAttacker::new();
-    Ok(attacker.attack(
-        &meta.correct,
-        &meta.local_table,
-        &meta.raw_ciphertexts,
-        &meta.ciphertext_weight,
-    ))
+    Ok(
+        attacker.attack(
+            &meta.correct,
+            &meta.local_table,
+            &meta.raw_ciphertexts,
+        ),
+    )
 }
 
 fn lp_optimization(config: &Config, data: &[String]) -> Result<f64> {
@@ -168,12 +197,13 @@ fn lp_optimization(config: &Config, data: &[String]) -> Result<f64> {
 
     info!("Mounting l{}_optimization attack...", p_norm);
     let mut attacker = LpAttacker::new(p_norm as usize);
-    Ok(attacker.attack(
-        &meta.correct,
-        &meta.local_table,
-        &meta.raw_ciphertexts,
-        &meta.ciphertext_weight,
-    ))
+    Ok(
+        attacker.attack(
+            &meta.correct,
+            &meta.local_table,
+            &meta.raw_ciphertexts,
+        ),
+    )
 }
 
 fn collect_meta(
@@ -222,9 +252,8 @@ fn collect_meta_lpfse(
     ctx.key_generate();
     ctx.initialize(data, "", "", false);
 
-    let mut raw_ciphertexts = Vec::new();
     let mut ciphertext_sets = HashMap::new();
-
+    let mut raw_ciphertexts = Vec::new();
     for message in data.iter() {
         let ciphertext = ctx.encrypt(message).unwrap().remove(0);
         let entry = ciphertext_sets
@@ -260,13 +289,6 @@ fn collect_meta_lpfse(
         correct,
         local_table,
         raw_ciphertexts,
-        ciphertext_weight: compute_ciphertext_weight(
-            ciphertext_sets
-                .into_iter()
-                .map(|(k, v)| v)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        ),
     })
 }
 
@@ -279,17 +301,9 @@ fn collect_meta_pfse(
         None => return Err("Parameter not found.".into()),
     };
 
-    if params.len() != 3 {
-        return Err(format!(
-            "Parameter size is not correct. Expect 3, but got {}.",
-            params.len()
-        )
-        .into());
-    }
-
     let mut ctx = ContextPFSE::default();
     ctx.key_generate();
-    ctx.set_params(params[0], params[1], params[2]);
+    ctx.set_params(&params);
 
     ctx.partition(data, &exponential);
     info!("Partition finished.");
@@ -297,24 +311,36 @@ fn collect_meta_pfse(
     ctx.transform();
     info!("Transform finished.");
 
-    let mut raw_ciphertexts = Vec::new();
-    let mut ciphertext_sets = Vec::new();
-    let mut correct = HashMap::new();
-
-    for message in data.iter().dedup() {
+    let mut ciphertext_sets = HashMap::new();
+    for message in data.iter().unique() {
         let mut ciphertext = ctx.encrypt(message).unwrap();
-        correct.insert(message.clone(), {
-            ciphertext.clone().into_iter().dedup().collect::<Vec<_>>()
-        });
-        ciphertext_sets.push(ciphertext.clone());
-        raw_ciphertexts.append(&mut ciphertext);
+        ciphertext_sets
+            .entry(message.clone())
+            .or_insert_with(Vec::new)
+            .append(&mut ciphertext);
+    }
+
+    let mut correct = HashMap::new();
+    let mut raw_ciphertexts = Vec::new();
+    for (k, v) in ciphertext_sets.iter() {
+        correct.insert(k.clone(), v.clone().into_iter().unique().collect_vec());
+        raw_ciphertexts.append(&mut v.clone());
+    }
+
+    // Append dummies into `raw_ciphertexts`.
+    for partitions in ctx.get_partitions().iter() {
+        for (message, cnt) in partitions.inner.iter() {
+            if !ctx.get_local_table().contains_key(message) {
+                raw_ciphertexts
+                    .append(&mut vec![message.clone().into_bytes(); *cnt]);
+            }
+        }
     }
 
     Ok(AttackMeta {
         correct,
         raw_ciphertexts,
         local_table: ctx.get_local_table().clone(),
-        ciphertext_weight: compute_ciphertext_weight(&ciphertext_sets),
     })
 }
 
@@ -326,27 +352,24 @@ fn collect_meta_native(
     let mut ctx = ContextNative::new(rnd);
     ctx.key_generate();
 
-    let mut raw_ciphertexts = Vec::new();
-    let mut ciphertext_sets = Vec::new();
-    let mut correct = HashMap::new();
+    let mut message_to_ciphertexts = HashMap::new();
     let mut local_table = HashMap::new();
 
     for message in data.iter() {
         let mut ciphertext = match ctx.encrypt(message) {
-            Some(c) => c,
+            Some(mut c) => c.remove(0),
             None => {
                 return Err(
                     "Error encrypting the message using native method.".into()
                 )
             }
         };
-        raw_ciphertexts.append(&mut ciphertext.clone());
-        ciphertext_sets.push(ciphertext.clone());
-        correct
+
+        message_to_ciphertexts
             .entry(message.clone())
-            .or_insert_with(|| ciphertext.clone())
-            .iter_mut()
-            .dedup();
+            .or_insert_with(Vec::new)
+            .push(ciphertext);
+
         let entry = local_table
             .entry(message.clone())
             .or_insert_with(|| vec![(0usize, 0usize, 0usize)]);
@@ -359,10 +382,17 @@ fn collect_meta_native(
         }
     }
 
+    // Collect meta from `ciphertext_sets`.
+    let mut correct = HashMap::new();
+    let mut raw_ciphertexts = Vec::new();
+    for (k, v) in message_to_ciphertexts.iter() {
+        correct.insert(k.clone(), v.clone().into_iter().unique().collect_vec());
+        raw_ciphertexts.append(&mut v.clone());
+    }
+
     Ok(AttackMeta {
         correct,
         local_table,
         raw_ciphertexts,
-        ciphertext_weight: compute_ciphertext_weight(&ciphertext_sets),
     })
 }

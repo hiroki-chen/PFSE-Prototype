@@ -4,6 +4,7 @@ use std::{collections::HashMap, f64::consts::E, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
+use log::warn;
 use rand_core::OsRng;
 
 use crate::{
@@ -14,45 +15,6 @@ use crate::{
     },
     util::{build_histogram, build_histogram_vec, SizeAllocated},
 };
-
-/// This struct defines the parameter pair that can be used to transform each partition `G_i`.
-///
-/// Formally speaking, K is such that
-/// ```tex
-///   K = \frac{k''_i}{k'_i} \leq threshold.
-/// ```
-#[derive(Clone)]
-pub struct K {
-    k_one: f64,
-    k_second: f64,
-}
-
-impl K {
-    pub fn new(k_one: f64, k_second: f64) -> Self {
-        Self { k_one, k_second }
-    }
-
-    pub fn get(&self) -> f64 {
-        self.k_one / self.k_second
-    }
-}
-
-impl Debug for K {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let res = self.k_one / self.k_second;
-        write!(f, "{} / {} = {}", self.k_one, self.k_second, res)
-    }
-}
-
-impl PartialEq for K {
-    fn eq(&self, other: &Self) -> bool {
-        let lhs = self.k_one / self.k_second;
-        let rhs = other.k_one / other.k_second;
-        (lhs - rhs).abs() <= 1.0e-6
-    }
-}
-
-impl Eq for K {}
 
 #[derive(Debug, Clone)]
 pub struct PartitionMeta {
@@ -68,7 +30,7 @@ pub struct Partition<T>
 where
     T: Debug + Clone,
 {
-    inner: Vec<HistType<T>>,
+    pub inner: Vec<HistType<T>>,
     meta: PartitionMeta,
 }
 
@@ -149,8 +111,8 @@ where
     p_transform: (f64, f64),
     /// The upper-bound of the advantage a MLE attacker.
     p_mle_upper_bound: f64,
-    /// The threshold for K_{i} = \frac{k'_i}{k''_i}.
-    p_threshold: f64,
+    /// The expansion factor \varepsilon.
+    p_expansion: f64,
     /// The number of messages.
     message_num: usize,
     /// Partitions.
@@ -179,8 +141,8 @@ where
         self.p_transform
     }
 
-    pub fn get_param_threshold(&self) -> f64 {
-        self.p_threshold
+    pub fn get_param_expansion_factor(&self) -> f64 {
+        self.p_expansion
     }
 
     pub fn get_partition_num(&self) -> usize {
@@ -230,7 +192,7 @@ where
             p_transform: (0f64, 0f64),
             p_mle_upper_bound: 0f64,
             p_scale: 0f64,
-            p_threshold: 0f64,
+            p_expansion: 0f64,
             message_num: 0usize,
             partitions: Vec::new(),
             conn: None,
@@ -336,10 +298,16 @@ impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
-    fn set_params(&mut self, lambda: f64, scale: f64, mle_upper_bound: f64) {
-        self.p_partition = lambda;
-        self.p_scale = scale;
-        self.p_mle_upper_bound = mle_upper_bound;
+    fn set_params(&mut self, params: &Vec<f64>) {
+        if params.len() != 4 {
+            log::error!("The number of the parameter is incorrect.");
+            return;
+        }
+
+        self.p_partition = params[0];
+        self.p_scale = params[1];
+        self.p_mle_upper_bound = params[2];
+        self.p_expansion = params[3];
         self.is_ready = true;
     }
 
@@ -416,78 +384,52 @@ where
             group += 1;
             i = j;
         }
-
-        // Set threshold.
-        self.p_threshold = (self.p_mle_upper_bound * self.message_num as f64)
-            / (self.p_partition
-                * self.p_scale
-                * self.get_partition_num() as f64);
     }
 
     fn transform(&mut self) {
-        let k = self.partitions.len();
+        // k_i &= \frac{e^{\lambda i}}{\sqrt{nk}} \\
+        // n_i &= \frac{\sqrt{nk}|G_i|}{(\Delta + c) \cdot e^{\lambda i} }
+        let k = self.partitions.len() as f64;
+        let n = self.message_num as f64;
+        let N =
+            self.partitions.iter().map(|e| e.inner.len()).sum::<usize>() as f64;
+
+        log::debug!("N = {}", N);
         for (index, partition) in self.partitions.iter_mut().enumerate() {
-            // Calculate \alpha.
-            let most_frequent = partition.inner.first().unwrap().1;
-            let alpha =
-                ((self.p_partition * k as f64 * self.p_scale.powf(2.0))
-                    / (self.p_mle_upper_bound
-                        * most_frequent as f64
-                        * partition.inner.len() as f64))
-                    .min(1.0);
+            let f_i = partition
+                .inner
+                .iter()
+                .map(|e| (e.1 as f64 / n).powf(2.0))
+                .sum::<f64>();
+            let k_prime_one = 1.0 / k;
+            let k_prime_one_reciprocal = 1.0 / (k_prime_one);
+            let n_i =
+                ((n * f_i) / (self.p_mle_upper_bound * N)).ceil() as usize;
 
-            // There are some constraints that should be taken into consideration.
-            // 1. n_i &\geq k'_i \cdot \max_{m \in G_{i}} \{ n_{M}(m) \} \cdot |G_{i}|
-            // 2. \sum_{i \in [k]} \frac{k'_i}{k''_i} \lambda e^{-\lambda i} &\leq \frac{(\Delta + c) |M|}{k_{0}}
-
-            let k_prime_one = (self.p_partition * (index as f64 + 1.0))
-                / (k as f64 * partition.inner.len() as f64);
-            let k_prime_second = (self.p_scale
-                * E.powf(self.p_partition * (index as f64 + 1.0))
-                * self.p_partition
-                * (index as f64 + 1.0))
-                / (alpha
-                    * self.p_mle_upper_bound
-                    * self.message_num as f64
-                    * partition.inner.len() as f64);
-            let k_prime_one_reciprocal = 1.0 / k_prime_one;
-
-            // Add an extra 1 to prevent problems related to precisions.
-            let n_i = (k_prime_second
-                * self.p_partition
-                * E.powf(-self.p_partition * (index as f64 + 1.0))
-                * self.p_scale
-                * self.message_num as f64)
-                .ceil() as usize
-                + 1;
             let mut sum = 0;
 
             for (message, cnt) in partition.inner.iter() {
-                let size = (k_prime_one * *cnt as f64).round() as usize;
+                let size = (k_prime_one * *cnt as f64).ceil() as usize;
                 let cur = self.local_table.entry(message.clone()).or_default();
-                cur.push((
-                    index,
-                    size,
-                    k_prime_one_reciprocal.round() as usize,
-                ));
+                cur.push((index, size, k_prime_one_reciprocal.ceil() as usize));
                 sum += size;
             }
 
             let delta = match n_i.checked_sub(sum) {
                 Some(d) => d,
-                None => panic!(
-                    "[-] Internal error: attemping to subtract {} by {}.",
-                    n_i, sum
-                ),
+                None => {
+                    warn!("attemping to subtract {} by {}.", n_i, sum);
+                    0
+                }
             };
 
             log::debug!(
-                "# {}... sum = {}, ni = {}, k_second = {}, alpha = {}.",
+                "# {}... |G_i| = {}, sum = {}, ni = {}, k_one = {}.",
                 index,
+                partition.inner.len(),
                 sum,
                 n_i,
-                k_prime_second,
-                alpha
+                k_prime_one,
             );
 
             for _ in sum..delta {
