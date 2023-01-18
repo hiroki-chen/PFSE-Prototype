@@ -67,19 +67,20 @@ where
         )
     }
 
-    /// Search a given message `T` from the remote server.
-    fn search(&mut self, message: &T, name: &str) -> Option<Vec<T>> {
-        let mut encrypted_message = match self.encrypt(message) {
-            Some(v) => v,
-            None => return None,
-        }
-        .into_iter()
-        .map(|e| {
-            let mut document = Document::new();
-            document.insert("data".to_string(), String::from_utf8(e).unwrap());
-            document
-        })
-        .collect::<Vec<_>>();
+    fn search_impl(
+        &self,
+        ciphertexts: Vec<Vec<u8>>,
+        name: &str,
+    ) -> Option<Vec<T>> {
+        let encrypted_message = ciphertexts
+            .into_iter()
+            .map(|e| {
+                let mut document = Document::new();
+                document
+                    .insert("data".to_string(), String::from_utf8(e).unwrap());
+                document
+            })
+            .collect::<Vec<_>>();
 
         let mut filter = Document::new();
         filter.insert("$or", encrypted_message);
@@ -90,13 +91,23 @@ where
         }
         .into_iter()
         .map(|data| {
-            let message_bytes =
-                self.decrypt(data.unwrap().data.as_bytes()).unwrap();
+            let message_bytes = self
+                .decrypt(data.unwrap().data.as_bytes())
+                .unwrap_or_default();
             T::from_bytes(&message_bytes)
         })
         .collect::<Vec<_>>();
 
         Some(data)
+    }
+
+    /// Search a given message `T` from the remote server.
+    fn search(&mut self, message: &T, name: &str) -> Option<Vec<T>> {
+        let ciphertexts = match self.encrypt(message) {
+            Some(v) => v,
+            None => return None,
+        };
+        self.search_impl(ciphertexts, name)
     }
 }
 

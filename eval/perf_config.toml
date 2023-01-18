@@ -1,0 +1,29 @@
+# pub db_config: DbConfig,
+# pub perf_type: PerfType,
+# pub fse_type: FSEType,
+# pub data_path: String,
+# pub shuffle: bool,
+# pub attributes: Option<Vec<String>>,
+# pub fse_params: Option<Vec<f64>>,
+# pub size: Option<usize>,
+
+# [[test_suites]]
+# "addr" = "mongodb://127.0.0.1:27017"
+# "db_name" = "bench"
+# "fse_type" = "dte"
+# "data_path" = "../data/test.csv"
+# "attributes" = ["order_number"]
+# "size" = 100000
+# "shuffle" = true
+# "perf_type" = "init"
+
+[[test_suites]]
+"addr" = "mongodb://127.0.0.1:27017"
+"db_name" = "bench"
+"fse_type" = "dte"
+"data_path" = "../data/test.csv"
+"attributes" = ["order_number"]
+"size" = 100000
+"shuffle" = true
+"perf_type" = "query"
+"drop" = false

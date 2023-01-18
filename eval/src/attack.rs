@@ -5,7 +5,7 @@ use std::{
     io::{Read, Write},
 };
 
-use chrono::{DateTime, Local};
+use chrono::Local;
 use fse::{
     attack::{AttackType, LpAttacker, MLEAttacker},
     fse::{exponential, BaseCrypto, PartitionFrequencySmoothing, ValueType},
@@ -14,15 +14,16 @@ use fse::{
     pfse::ContextPFSE,
     util::read_csv_multiple,
 };
-use itertools::{cloned, Itertools};
+use itertools::Itertools;
 use log::{debug, info, warn};
 use rand::seq::SliceRandom;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
-use crate::Args;
-
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use crate::{
+    config::{AttackConfig, FSEType},
+    Args, Result,
+};
 
 /// A struct that contains the metadata for the attack.
 #[derive(Debug)]
@@ -35,43 +36,18 @@ where
     raw_ciphertexts: Vec<Vec<u8>>,
 }
 
-#[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
-#[serde(rename_all = "snake_case")]
-enum FSEType {
-    Dte,
-    Rnd,
-    LpfseIhbe,
-    /// Currently, we do not support it.
-    LpfseBhe,
-    Pfse,
-}
-
-#[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(rename_all = "snake_case")]
-struct Config {
-    fse_type: FSEType,
-    attack_type: AttackType,
-    data_path: String,
-    shuffle: bool,
-    /// None ==> all attributes.
-    attributes: Option<Vec<String>>,
-    fse_params: Option<Vec<f64>>,
-    p_norm: Option<u8>,
-    size: Option<usize>,
-}
-
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
 struct MainResult {
     accuracy: f64,
     column_name: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "snake_case")]
 struct AttackResult {
     result: MainResult,
-    config: Config,
+    config: AttackConfig,
 }
 
 /// Execute the attack given the CLI arguments.
@@ -83,7 +59,7 @@ pub fn execute_attack(args: &Args) -> Result<()> {
 
     let date = Local::now();
     let mut test_suites =
-        toml::from_slice::<HashMap<String, Vec<Config>>>(&content)?
+        toml::from_slice::<HashMap<String, Vec<AttackConfig>>>(&content)?
             .remove("test_suites")
             .unwrap();
     test_suites.truncate(args.suite_num.unwrap_or(test_suites.len()));
@@ -135,7 +111,7 @@ pub fn execute_attack(args: &Args) -> Result<()> {
             toml.insert("attack_result".to_string(), vec![result]);
             let content = toml::to_vec(&toml)?;
             file.write_all(content.as_slice())?;
-            file.write(b"\n")?;
+            file.write_all(b"\n")?;
         }
     }
 
@@ -144,7 +120,7 @@ pub fn execute_attack(args: &Args) -> Result<()> {
 
 fn do_attack(
     round: usize,
-    config: &Config,
+    config: &AttackConfig,
     dataset: &[Vec<String>],
 ) -> Result<Vec<f64>> {
     let mut res = Vec::new();
@@ -152,7 +128,7 @@ fn do_attack(
     for data in dataset.iter() {
         let mut accuracy = 0f64;
         // Run multiple rounds.
-        for idx in 0..round {
+        for idx in 1..=round {
             info!("Round #{:<04} started.", idx);
             accuracy += match config.attack_type {
                 AttackType::LpOptimization => lp_optimization(config, data)?,
@@ -173,7 +149,7 @@ fn do_attack(
     Ok(res)
 }
 
-fn mle_attack(config: &Config, data: &[String]) -> Result<f64> {
+fn mle_attack(config: &AttackConfig, data: &[String]) -> Result<f64> {
     let meta = collect_meta(config, data)?;
 
     info!("Mounting mle_attack...");
@@ -187,7 +163,7 @@ fn mle_attack(config: &Config, data: &[String]) -> Result<f64> {
     )
 }
 
-fn lp_optimization(config: &Config, data: &[String]) -> Result<f64> {
+fn lp_optimization(config: &AttackConfig, data: &[String]) -> Result<f64> {
     let meta = collect_meta(config, data)?;
 
     let p_norm = match config.p_norm {
@@ -207,7 +183,7 @@ fn lp_optimization(config: &Config, data: &[String]) -> Result<f64> {
 }
 
 fn collect_meta(
-    config: &Config,
+    config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
     let size = config.size.unwrap_or(data.len());
@@ -225,7 +201,7 @@ fn collect_meta(
 }
 
 fn collect_meta_lpfse(
-    config: &Config,
+    config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
     let params = match &config.fse_params {
@@ -293,7 +269,7 @@ fn collect_meta_lpfse(
 }
 
 fn collect_meta_pfse(
-    config: &Config,
+    config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
     let params = match &config.fse_params {
@@ -303,7 +279,7 @@ fn collect_meta_pfse(
 
     let mut ctx = ContextPFSE::default();
     ctx.key_generate();
-    ctx.set_params(&params);
+    ctx.set_params(params);
 
     ctx.partition(data, &exponential);
     info!("Partition finished.");
@@ -345,10 +321,10 @@ fn collect_meta_pfse(
 }
 
 fn collect_meta_native(
-    config: &Config,
+    config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
-    let rnd = (config.fse_type == FSEType::Rnd);
+    let rnd = config.fse_type == FSEType::Rnd;
     let mut ctx = ContextNative::new(rnd);
     ctx.key_generate();
 
@@ -356,7 +332,7 @@ fn collect_meta_native(
     let mut local_table = HashMap::new();
 
     for message in data.iter() {
-        let mut ciphertext = match ctx.encrypt(message) {
+        let ciphertext = match ctx.encrypt(message) {
             Some(mut c) => c.remove(0),
             None => {
                 return Err(

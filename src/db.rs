@@ -4,8 +4,9 @@
 use std::marker::PhantomData;
 
 use mongodb::{
-    bson::Document,
+    bson::{doc, Document},
     sync::{Client, Cursor, Database},
+    IndexModel,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -14,7 +15,6 @@ use crate::{util::SizeAllocated, Result};
 /// A sample data store.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Data {
-    pub id: usize,
     pub data: String,
 }
 
@@ -85,6 +85,8 @@ where
         collection_name: &str,
     ) -> Result<()> {
         let collection = self.database.collection(collection_name);
+        let index = IndexModel::builder().keys(doc! {"data":1}).build();
+        collection.create_index(index, None)?;
         collection.insert_many(document, None)?;
 
         Ok(())
@@ -103,6 +105,7 @@ where
     /// Automatically delete the current database.
     fn drop(&mut self) {
         if self.drop {
+            log::debug!("database dropped.");
             self.database.drop(None).unwrap_or_default();
         }
     }

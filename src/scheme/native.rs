@@ -1,7 +1,7 @@
 //! This module mainly implements a baseline deterministic encryption algorithm that does NOT hide the frequency
 //! of the message dataset it receives.
 
-use std::{fmt::Debug, marker::PhantomData};
+use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
@@ -15,7 +15,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
 {
     /// The secret key for symmetric encryption.
     key: Vec<u8>,
@@ -23,20 +23,20 @@ where
     conn: Option<Connector<Data>>,
     /// Whether we use RND.
     rnd: bool,
-    /// Marker.
-    _marker: PhantomData<T>,
+    /// A local table for nonce lookup.
+    local_table: HashMap<T, Vec<Vec<u8>>>,
 }
 
 impl<T> ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
 {
     pub fn new(rnd: bool) -> Self {
         Self {
             key: Vec::new(),
             conn: None,
             rnd,
-            _marker: PhantomData,
+            local_table: HashMap::new(),
         }
     }
 
@@ -54,7 +54,7 @@ where
 
 impl<T> Default for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
 {
     fn default() -> Self {
         Self::new(false)
@@ -63,7 +63,7 @@ where
 
 impl<T> Conn for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
@@ -72,7 +72,7 @@ where
 
 impl<T> BaseCrypto<T> for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
 {
     fn key_generate(&mut self) {
         self.key.clear();
@@ -94,7 +94,13 @@ where
             true => {
                 let mut buf = vec![0u8; 12];
                 OsRng.fill_bytes(&mut buf);
-                Nonce::clone_from_slice(buf.as_slice())
+                let nonce = Nonce::clone_from_slice(buf.as_slice());
+                self.local_table
+                    .entry(message.clone())
+                    .or_default()
+                    .push(buf);
+
+                nonce
             }
             false => Nonce::clone_from_slice(&[0u8; 12]),
         };
@@ -140,15 +146,41 @@ where
         let plaintext = match aes.decrypt(nonce, decoded_ciphertext.as_slice())
         {
             Ok(v) => v,
+            Err(e) => return None,
+        };
+
+        Some(plaintext)
+    }
+
+    fn search(&mut self, message: &T, name: &str) -> Option<Vec<T>> {
+        let aes = match Aes256Gcm::new_from_slice(&self.key) {
+            Ok(aes) => aes,
             Err(e) => {
                 println!(
-                    "[-] Error when encrypting the message due to {:?}",
-                    e
+                    "[-] Error constructing the AES context due to {:?}.",
+                    e.to_string()
                 );
                 return None;
             }
         };
 
-        Some(plaintext)
+        if self.rnd {
+            let nonces = self.local_table.get(message).unwrap();
+            let ciphertexts = nonces
+                .iter()
+                .map(|e| {
+                    let nonce = Nonce::from_slice(e);
+                    let ciphertext =
+                        aes.encrypt(nonce, message.as_bytes()).unwrap();
+                    general_purpose::STANDARD_NO_PAD
+                        .encode(ciphertext)
+                        .into_bytes()
+                })
+                .collect();
+            self.search_impl(ciphertexts, name)
+        } else {
+            let ciphertext = self.encrypt(message).unwrap();
+            self.search_impl(ciphertext, name)
+        }
     }
 }
