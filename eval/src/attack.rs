@@ -186,7 +186,7 @@ fn collect_meta(
     config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
-    let size = config.size.unwrap_or(data.len());
+  let size = config.size.unwrap_or(data.len()).min(data.len());
     let data_slice = &data[..size];
     let meta = match config.fse_type {
         FSEType::Dte | FSEType::Rnd => collect_meta_native(config, data_slice),

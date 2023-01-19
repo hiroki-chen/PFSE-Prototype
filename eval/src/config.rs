@@ -20,6 +20,14 @@ pub enum PerfType {
     Insert,
 }
 
+#[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum DatasetType {
+    Real,
+    Zipf,
+    Normal,
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct AttackConfig {
@@ -37,12 +45,16 @@ pub struct AttackConfig {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct PerfConfig {
+    pub dataset_type: DatasetType,
     pub perf_type: PerfType,
     pub fse_type: FSEType,
-    pub data_path: String,
+    pub data_path: Option<String>,
     pub shuffle: bool,
     pub attributes: Option<Vec<String>>,
     pub fse_params: Option<Vec<f64>>,
+    /// Used to generate synthetic datasets.
+    /// Format: [<domain>, <dist_param>]
+    pub data_params: Option<Vec<f64>>,
     pub size: Option<usize>,
     pub addr: Option<String>,
     pub db_name: Option<String>,
