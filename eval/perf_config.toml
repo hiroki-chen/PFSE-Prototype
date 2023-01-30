@@ -20,10 +20,49 @@
 [[test_suites]]
 "addr" = "mongodb://127.0.0.1:27017"
 "db_name" = "bench"
+"dataset_type" = "real"
 "fse_type" = "dte"
 "data_path" = "../data/test.csv"
 "attributes" = ["order_number"]
-"size" = 100000
+"size" = 1000000
 "shuffle" = true
 "perf_type" = "query"
-"drop" = false
+"drop" = true
+
+# [[test_suites]]
+# "addr" = "mongodb://127.0.0.1:27017"
+# "db_name" = "bench"
+# "dataset_type" = "real"
+# "fse_type" = "rnd"
+# "data_path" = "../data/test.csv"
+# "attributes" = ["order_number"]
+# "size" = 1000000
+# "shuffle" = true
+# "perf_type" = "query"
+# "drop" = true
+
+[[test_suites]]
+"addr" = "mongodb://127.0.0.1:27017"
+"db_name" = "bench"
+"dataset_type" = "real"
+"fse_type" = "pfse"
+"fse_params" = [0.25, 1.0, 0.03]
+"data_path" = "../data/test.csv"
+"attributes" = ["order_number"]
+"size" = 1000000
+"shuffle" = true
+"perf_type" = "query"
+"drop" = true
+
+[[test_suites]]
+"addr" = "mongodb://127.0.0.1:27017"
+"db_name" = "bench"
+"dataset_type" = "real"
+"fse_type" = "lpfse_ihbe"
+"fse_params" = [1e-5]
+"data_path" = "../data/test.csv"
+"attributes" = ["order_number"]
+"size" = 1000000
+"shuffle" = true
+"perf_type" = "query"
+"drop" = true

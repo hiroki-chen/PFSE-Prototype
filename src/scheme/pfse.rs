@@ -51,6 +51,11 @@ where
         Self { inner, meta }
     }
 
+    /// Find the maximum frequency within the partition.
+    pub fn max_freq(&self) -> f64 {
+        self.inner.first().unwrap().1 as f64 / self.meta.message_num as f64
+    }
+
     /// Convert a histogram `Vec<HistType<T>>` into a frequency table `Vec<FreqType<T>>`. See [`FreqType`] and [`HistType`].
     pub fn build_frequency_table(&self) -> Vec<FreqType<T>> {
         self.inner
@@ -109,10 +114,8 @@ where
     p_scale: f64,
     /// The parameter for transformation. A.k.a., k' and k''.
     p_transform: (f64, f64),
-    /// The upper-bound of the advantage a MLE attacker.
-    p_mle_upper_bound: f64,
-    /// The expansion factor \varepsilon.
-    p_expansion: f64,
+    /// The upper-bound of the advantage of the inference attacker. For example, `p_advantage` = 0.1, then the advantage should be no larger than 0.1 * baseline.
+    p_advantage: f64,
     /// The number of messages.
     message_num: usize,
     /// Partitions.
@@ -139,10 +142,6 @@ where
 
     pub fn get_param_transform(&self) -> (f64, f64) {
         self.p_transform
-    }
-
-    pub fn get_param_expansion_factor(&self) -> f64 {
-        self.p_expansion
     }
 
     pub fn get_partition_num(&self) -> usize {
@@ -190,9 +189,8 @@ where
             local_table: HashMap::new(),
             p_partition: 0f64,
             p_transform: (0f64, 0f64),
-            p_mle_upper_bound: 0f64,
+            p_advantage: 0f64,
             p_scale: 0f64,
-            p_expansion: 0f64,
             message_num: 0usize,
             partitions: Vec::new(),
             conn: None,
@@ -299,15 +297,14 @@ where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
     fn set_params(&mut self, params: &Vec<f64>) {
-        if params.len() != 4 {
+        if params.len() != 3 {
             log::error!("The number of the parameter is incorrect.");
             return;
         }
 
         self.p_partition = params[0];
         self.p_scale = params[1];
-        self.p_mle_upper_bound = params[2];
-        self.p_expansion = params[3];
+        self.p_advantage = params[2];
         self.is_ready = true;
     }
 
@@ -391,10 +388,17 @@ where
         // n_i &= \frac{\sqrt{nk}|G_i|}{(\Delta + c) \cdot e^{\lambda i} }
         let k = self.partitions.len() as f64;
         let n = self.message_num as f64;
-        let N =
-            self.partitions.iter().map(|e| e.inner.len()).sum::<usize>() as f64;
 
-        log::debug!("N = {}", N);
+        // Compute `p_advantage`.
+        let baseline =
+            self.partitions.iter().map(|e| e.max_freq()).sum::<f64>();
+        self.p_advantage *= baseline;
+        log::info!(
+            "The baseline is {}, and the advantage is {}.",
+            baseline,
+            self.p_advantage
+        );
+
         for (index, partition) in self.partitions.iter_mut().enumerate() {
             let f_i = partition
                 .inner
@@ -403,8 +407,7 @@ where
                 .sum::<f64>();
             let k_prime_one = 1.0 / k;
             let k_prime_one_reciprocal = 1.0 / (k_prime_one);
-            let n_i =
-                ((n * f_i) / (self.p_mle_upper_bound * N)).ceil() as usize;
+            let n_i = ((n * f_i) / self.p_advantage).ceil() as usize;
 
             let mut sum = 0;
 
@@ -418,7 +421,10 @@ where
             let delta = match n_i.checked_sub(sum) {
                 Some(d) => d,
                 None => {
-                    warn!("attemping to subtract {} by {}.", n_i, sum);
+                    warn!(
+                        "Partition #{:<4}: attemping to subtract {} by {}.",
+                        index, n_i, sum
+                    );
                     0
                 }
             };
