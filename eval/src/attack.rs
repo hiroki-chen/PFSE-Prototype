@@ -281,7 +281,7 @@ fn collect_meta_pfse(
     ctx.key_generate();
     ctx.set_params(params);
 
-    ctx.partition(data, &exponential);
+    ctx.partition(data, exponential);
     info!("Partition finished.");
 
     ctx.transform();

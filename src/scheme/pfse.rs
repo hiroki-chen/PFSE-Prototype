@@ -116,6 +116,8 @@ where
     p_transform: (f64, f64),
     /// The upper-bound of the advantage of the inference attacker. For example, `p_advantage` = 0.1, then the advantage should be no larger than 0.1 * baseline.
     p_advantage: f64,
+    /// The partition function pointer.
+    partition_func: Option<fn(f64, usize) -> f64>,
     /// The number of messages.
     message_num: usize,
     /// Partitions.
@@ -191,6 +193,7 @@ where
             p_transform: (0f64, 0f64),
             p_advantage: 0f64,
             p_scale: 0f64,
+            partition_func: None,
             message_num: 0usize,
             partitions: Vec::new(),
             conn: None,
@@ -311,8 +314,10 @@ where
     fn partition(
         &mut self,
         input: &[T],
-        partition_func: &dyn Fn(f64, usize) -> f64,
+        partition_func: fn(f64, usize) -> f64,
     ) {
+        // Set the partition function.
+        self.partition_func = Some(partition_func);
         if !self.ready() {
             panic!("[-] Context not ready.");
         }
@@ -405,9 +410,12 @@ where
                 .iter()
                 .map(|e| (e.1 as f64 / n).powf(2.0))
                 .sum::<f64>();
+            let cur_func =
+                (self.partition_func.unwrap())(self.p_partition, index + 1);
             let k_prime_one = 1.0 / k;
             let k_prime_one_reciprocal = 1.0 / (k_prime_one);
-            let n_i = ((n * f_i) / self.p_advantage).ceil() as usize;
+            let n_i =
+                ((n * f_i) / (self.p_advantage * cur_func)).ceil() as usize;
 
             let mut sum = 0;
 
@@ -430,12 +438,13 @@ where
             };
 
             log::debug!(
-                "# {}... |G_i| = {}, sum = {}, ni = {}, k_one = {}.",
+                "# {}... |G_i| = {}, sum = {}, ni = {}, k_one = {}, f_i = {}.",
                 index,
                 partition.inner.len(),
                 sum,
                 n_i,
                 k_prime_one,
+                f_i,
             );
 
             for _ in sum..delta {

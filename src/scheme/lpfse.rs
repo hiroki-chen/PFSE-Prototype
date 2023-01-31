@@ -68,6 +68,9 @@ where
     /// Encode the message and returns one of the homophones from its homophone set.
     fn encode(&mut self, message: &T) -> Option<Vec<u8>>;
 
+    /// Encode messages into all possible tokens for search.
+    fn encode_all(&self, message: &T) -> Option<Vec<Vec<u8>>>;
+
     /// Decode the message. Note we do not return `T` directly.
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>>;
 
@@ -276,6 +279,22 @@ where
         }
     }
 
+    fn encode_all(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+        match self.local_table.get(message) {
+            Some((_, interval)) => {
+                let mut ans = Vec::new();
+                for i in interval.clone() {
+                    let mut encoded_message = message.as_bytes().to_vec();
+                    encoded_message.extend_from_slice(b"|");
+                    encoded_message.extend_from_slice(&i.to_le_bytes());
+                    ans.push(encoded_message);
+                }
+                Some(ans)
+            }
+            None => None,
+        }
+    }
+
     fn decode(&self, message: &[u8]) -> Option<Vec<u8>> {
         // Simply strip the homophone from message.
         Some(
@@ -334,7 +353,7 @@ where
                 let band = (*frequency as f64 / self.width).ceil() as u64;
                 let homophone = Uniform::new(0, band).sample(&mut OsRng);
 
-                if set.iter().any(|&e| e == homophone) {
+                if !set.iter().any(|&e| e == homophone) {
                     set.push(homophone);
                 }
 
@@ -344,6 +363,23 @@ where
                 encoded_message.extend_from_slice(b"|");
                 encoded_message.extend_from_slice(&homophone.to_le_bytes());
                 Some(encoded_message)
+            }
+            None => None,
+        }
+    }
+
+    fn encode_all(&self, message: &T) -> Option<Vec<Vec<u8>>> {
+        match self.local_table.get(message) {
+            Some((_, set)) => {
+                let mut ans = Vec::new();
+                for homophone in set {
+                    let mut encoded_message = Vec::new();
+                    encoded_message.extend_from_slice(message.as_bytes());
+                    encoded_message.extend_from_slice(b"|");
+                    encoded_message.extend_from_slice(&homophone.to_le_bytes());
+                    ans.push(encoded_message);
+                }
+                Some(ans)
             }
             None => None,
         }
@@ -488,5 +524,44 @@ where
         };
 
         self.encoder.decode(&plaintext)
+    }
+
+    fn search(&mut self, message: &T, name: &str) -> Option<Vec<T>> {
+        match self.encoder.encode_all(message) {
+            Some(homophones) => {
+                let mut ciphertexts = Vec::new();
+                let aes = match Aes256Gcm::new_from_slice(&self.key) {
+                    Ok(aes) => aes,
+                    Err(e) => {
+                        panic!(
+                          "[-] Error constructing the AES context due to {:?}.",
+                          e.to_string()
+                      );
+                    }
+                };
+                let nonce = Nonce::from_slice(&[0u8; 12]);
+
+                for homophone in &homophones {
+                    let ciphertext =
+                        match aes.encrypt(nonce, homophone.as_slice()) {
+                            Ok(ciphertext) => ciphertext,
+                            Err(e) => {
+                                error!(
+                                    "Error encrypting the message due to {:?}.",
+                                    e.to_string()
+                                );
+                                return None;
+                            }
+                        };
+                    ciphertexts.push(
+                        general_purpose::STANDARD_NO_PAD
+                            .encode(ciphertext)
+                            .into_bytes(),
+                    );
+                }
+                self.search_impl(ciphertexts, name)
+            }
+            None => None,
+        }
     }
 }

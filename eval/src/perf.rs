@@ -243,7 +243,7 @@ fn init_pfse(
     let mut ctx = ContextPFSE::default();
     ctx.key_generate();
     ctx.set_params(config.fse_params.as_ref().unwrap());
-    ctx.partition(dataset, &exponential);
+    ctx.partition(dataset, exponential);
     ctx.transform();
 
     let ciphertexts = ctx
