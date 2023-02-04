@@ -117,7 +117,7 @@ where
     T: AsBytes + FromBytes + Debug,
 {
     /// Initialize all the parameters.
-    fn set_params(&mut self, params: &Vec<f64>);
+    fn set_params(&mut self, params: &[f64]);
 
     /// Given a vector of `T` and a function closure as the partitioning function, this function constructs the partitioned vectors
     /// containing tuples `(T, usize)` (T and its count).

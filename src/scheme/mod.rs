@@ -13,6 +13,7 @@ use crate::{
 pub mod lpfse;
 pub mod native;
 pub mod pfse;
+pub mod wre;
 
 impl Random for i32 {
     #[inline(always)]

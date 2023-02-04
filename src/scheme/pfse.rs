@@ -299,7 +299,7 @@ impl<T> PartitionFrequencySmoothing<T> for ContextPFSE<T>
 where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
 {
-    fn set_params(&mut self, params: &Vec<f64>) {
+    fn set_params(&mut self, params: &[f64]) {
         if params.len() != 3 {
             log::error!("The number of the parameter is incorrect.");
             return;
