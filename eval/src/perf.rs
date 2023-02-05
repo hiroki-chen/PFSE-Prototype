@@ -178,6 +178,7 @@ fn do_init(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
+        FSEType::Wre => todo!(),
     }?;
     Ok(instant.elapsed())
 }
@@ -187,6 +188,7 @@ fn do_insert(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
+        FSEType::Wre => todo!(),
     }?;
     let instant = Instant::now();
     insert(ctx.get_conn(), &data, &format!("{:?}", config.fse_type))?;
@@ -198,6 +200,7 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
+        FSEType::Wre => todo!(),
     }?;
     let name = format!("{:?}", config.fse_type);
     insert(ctx.get_conn(), &data, &name)?;

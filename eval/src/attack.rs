@@ -194,6 +194,7 @@ fn collect_meta(
         FSEType::LpfseBhe | FSEType::LpfseIhbe => {
             collect_meta_lpfse(config, data_slice)
         }
+        FSEType::Wre => todo!(),
     };
 
     info!("Meta collected.");

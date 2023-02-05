@@ -6,7 +6,9 @@
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 use aes_gcm::{Aes256Gcm, KeyInit};
+use rand::seq::SliceRandom;
 use rand_core::OsRng;
+use rand_distr::{Distribution, Exp, WeightedAliasIndex};
 
 use crate::{
     db::{Connector, Data},
@@ -78,10 +80,74 @@ where
     ///
     /// This function returns the salt hashmap where the key is the salt and the value is the weight of
     /// this salt. The algorithm them samples a salt according to the frequency of the hashmap.
-    pub fn get_salt(&self, message: &T) -> (Vec<usize>, Vec<f64>) {
+    fn get_salt_set(&self, message: &T) -> (Vec<usize>, Vec<f64>) {
+        let mut total = 0f64;
+        let mut weights = Vec::new();
+        let mut salts = Vec::new();
+        let mut word_frequency = Vec::new();
+
+        // The exponential distribution Exp(lambda).
+        let exp_distribution = Exp::new(self.lambda as f64).unwrap();
+
+        while total < 1.0 {
+            let weight = exp_distribution.sample(&mut OsRng);
+            weights.push(weight);
+            total += weight;
+        }
+        *weights.last_mut().unwrap() = 1.0 - (total - weights.last().unwrap());
+
+        // Get a psedorandom permutation from message (histogram)
+        let mut prs = self
+            .local_table
+            .iter()
+            .map(|(k, v)| (k, *v))
+            .collect::<Vec<_>>();
+        prs.shuffle(&mut OsRng);
+        // fr = P_M(m_1) + ... + PM(m_{x − 1}) where m = mx (<- the current message.)
+        let idx = match prs.iter().position(|&(k, v)| k == message) {
+            Some(idx) => idx,
+            // Does not exists, this should be an error.
+            None => return (vec![], vec![]),
+        };
+        let fr = prs[..idx].iter().map(|&(k, v)| v).sum::<f64>();
+
+        let mut i = 0usize;
+        let mut cdf = 0f64;
+        while cdf < fr {
+            cdf += weights[i];
+            i += 1;
+        }
+
+        *weights.get_mut(i).unwrap() = cdf - fr;
+        cdf = fr;
+
+        let message_frequency = match self.local_table.get(message) {
+            Some(&v) => v,
+            None => return (vec![], vec![]),
+        };
+
+        while cdf < fr + message_frequency {
+            word_frequency.push(weights[i] as f64 / fr);
+            salts.push(i);
+            cdf += weights[i];
+        }
+
+        if cdf > fr + message_frequency {
+            let diff = fr + message_frequency - cdf;
+            word_frequency.push((weights[i] - diff) as f64 / fr);
+            salts.push(i);
+        }
+
         // After the information is collected, one can use rand_distr::WeightedAliasIndex to sample a salt
         // from the multinomial distribution.
-        todo!()
+        (salts, word_frequency)
+    }
+
+    /// Sample a salt according to the multinomial distribution.
+    fn get_salt(&self, weights: &(Vec<usize>, Vec<f64>)) -> usize {
+        let distribution = WeightedAliasIndex::new(weights.1.clone()).unwrap();
+        let index = distribution.sample(&mut OsRng);
+        *weights.0.get(index).unwrap()
     }
 }
 

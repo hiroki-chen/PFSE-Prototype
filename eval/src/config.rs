@@ -10,6 +10,7 @@ pub enum FSEType {
     /// Currently, we do not support it.
     LpfseBhe,
     Pfse,
+    Wre,
 }
 
 #[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone)]
