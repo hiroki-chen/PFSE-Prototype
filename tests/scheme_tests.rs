@@ -26,8 +26,8 @@ mod scheme_tests {
         let mut ctx = ContextPFSE::default();
         ctx.initialize_conn(ADDRESS, DB_NAME, false);
         ctx.key_generate();
-        ctx.set_params(0.25, 1.0, 2_f64.powf(-12_f64));
-        ctx.partition(&vec, &exp);
+        ctx.set_params(&vec![0.25, 1.0, 2_f64.powf(-12_f64)]);
+        ctx.partition(&vec, exp);
         ctx.transform();
         ctx.store("./data/summary.txt").unwrap();
 
@@ -35,9 +35,9 @@ mod scheme_tests {
             .smooth()
             .into_iter()
             .enumerate()
-            .map(|(id, ciphertext)| {
+            .map(|(_, ciphertext)| {
                 let data = String::from_utf8(ciphertext).unwrap();
-                Data { id, data }
+                Data { data }
             })
             .collect::<Vec<_>>();
 
@@ -125,7 +125,6 @@ mod scheme_tests {
 
         let mut ctx = ContextPFSE::<String>::default();
         let doc = fse::db::Data {
-            id: 0,
             data: "ooo".to_string(),
         };
         ctx.initialize_conn("mongodb://127.0.0.1:27017", "bench", true);
@@ -144,5 +143,25 @@ mod scheme_tests {
                 .into_iter()
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn test_wre() {
+        use fse::util::read_csv_exact;
+        use fse::{fse::BaseCrypto, wre::ContextWRE};
+
+        let mut vec =
+            read_csv_exact("./data/test.csv", "order_number").unwrap();
+        vec.sort();
+        let messages = &vec[..10000];
+
+        let mut ctx = ContextWRE::new(1000);
+        ctx.key_generate();
+        ctx.initialize(messages, ADDRESS, DB_NAME, true);
+
+        let ciphertexts = messages
+            .iter()
+            .map(|message| ctx.encrypt(message).unwrap())
+            .collect::<Vec<_>>();
     }
 }

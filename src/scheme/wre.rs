@@ -5,10 +5,11 @@
 
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
-use aes_gcm::{Aes256Gcm, KeyInit};
+use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
+use log::error;
 use rand::seq::SliceRandom;
 use rand_core::OsRng;
-use rand_distr::{Distribution, Exp, WeightedAliasIndex};
+use rand_distr::{Distribution, Exp, Uniform, WeightedAliasIndex};
 
 use crate::{
     db::{Connector, Data},
@@ -169,7 +170,30 @@ where
     }
 
     fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
-        todo!()
+        let salts = self.get_salt_set(message);
+        let salt = self.get_salt(&salts);
+        let aes = match Aes256Gcm::new_from_slice(&self.key) {
+            Ok(aes) => aes,
+            Err(e) => {
+                error!(
+                    "Error constructing the AES context due to {:?}.",
+                    e.to_string()
+                );
+                return None;
+            }
+        };
+
+        let nonce = Nonce::from_slice(&[0u8; 12]);
+        match aes.encrypt(nonce, salt.to_le_bytes().as_slice()) {
+            Ok(ciphertext) => Some(vec![ciphertext]),
+            Err(e) => {
+                error!(
+                    "Error encrypting the message due to {:?}.",
+                    e.to_string()
+                );
+                None
+            }
+        }
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
