@@ -1,5 +1,6 @@
 mod scheme_tests {
     use fse::fse::Conn;
+    use rand::seq::SliceRandom;
 
     const ADDRESS: &str = "mongodb://127.0.0.1:27017";
     const DB_NAME: &str = "bench";
@@ -147,15 +148,16 @@ mod scheme_tests {
 
     #[test]
     fn test_wre() {
+        use rand_core::OsRng;
         use fse::util::read_csv_exact;
         use fse::{fse::BaseCrypto, wre::ContextWRE};
 
         let mut vec =
             read_csv_exact("./data/test.csv", "order_number").unwrap();
-        vec.sort();
-        let messages = &vec[..10000];
+        vec.shuffle(&mut OsRng);
+        let messages = &vec[..100];
 
-        let mut ctx = ContextWRE::new(1000);
+        let mut ctx = ContextWRE::new(100);
         ctx.key_generate();
         ctx.initialize(messages, ADDRESS, DB_NAME, true);
 

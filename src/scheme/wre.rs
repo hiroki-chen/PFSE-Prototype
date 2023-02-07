@@ -81,21 +81,27 @@ where
     ///
     /// This function returns the salt hashmap where the key is the salt and the value is the weight of
     /// this salt. The algorithm them samples a salt according to the frequency of the hashmap.
+    #[deprecated]
     fn get_salt_set(&self, message: &T) -> (Vec<usize>, Vec<f64>) {
         let mut total = 0f64;
-        let mut weights = Vec::new();
+        let mut weights = HashMap::new();
         let mut salts = Vec::new();
         let mut word_frequency = Vec::new();
+        let mut s = 0usize;
 
         // The exponential distribution Exp(lambda).
         let exp_distribution = Exp::new(self.lambda as f64).unwrap();
 
         while total < 1.0 {
+            s += 1;
             let weight = exp_distribution.sample(&mut OsRng);
-            weights.push(weight);
+            weights.entry(s).or_insert(weight);
             total += weight;
         }
-        *weights.last_mut().unwrap() = 1.0 - (total - weights.last().unwrap());
+
+        weights
+            .entry(s)
+            .and_modify(|frequency| *frequency = 1.0 - (total - *frequency));
 
         // Get a psedorandom permutation from message (histogram)
         let mut prs = self
@@ -110,32 +116,33 @@ where
             // Does not exists, this should be an error.
             None => return (vec![], vec![]),
         };
-        let fr = prs[..idx].iter().map(|&(k, v)| v).sum::<f64>();
+        let fr = prs[..idx].iter().map(|&(k, v)| v).sum::<f64>().min(1.0);
 
         let mut i = 0usize;
         let mut cdf = 0f64;
         while cdf < fr {
-            cdf += weights[i];
+            cdf += *weights.get(&i).unwrap_or(&0.0);
             i += 1;
         }
-
-        *weights.get_mut(i).unwrap() = cdf - fr;
+        *weights.get_mut(&i).unwrap() = cdf - fr;
         cdf = fr;
 
         let message_frequency = match self.local_table.get(message) {
             Some(&v) => v,
             None => return (vec![], vec![]),
         };
-
-        while cdf < fr + message_frequency {
-            word_frequency.push(weights[i] as f64 / fr);
+        while cdf < (fr + message_frequency).min(1.0) {
+            let weight = *weights.get(&i).unwrap();
+            word_frequency.push(weight / fr);
             salts.push(i);
-            cdf += weights[i];
+            i += 1;
+            cdf += *weights.get(&i).unwrap();
         }
 
         if cdf > fr + message_frequency {
             let diff = fr + message_frequency - cdf;
-            word_frequency.push((weights[i] - diff) as f64 / fr);
+            let weight = *weights.get(&i).unwrap();
+            word_frequency.push((weight - diff) / fr);
             salts.push(i);
         }
 
