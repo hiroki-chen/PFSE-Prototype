@@ -57,17 +57,22 @@ pub fn execute_attack(args: &Args) -> Result<()> {
     let mut content = Vec::new();
     file.read_to_end(&mut content)?;
 
-    let date = Local::now();
     let mut test_suites =
         toml::from_slice::<HashMap<String, Vec<AttackConfig>>>(&content)?
             .remove("test_suites")
             .unwrap();
     test_suites.truncate(args.suite_num.unwrap_or(test_suites.len()));
 
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(format!("{}/attack_{:?}.toml", args.output_path, date))?;
+    let mut file = match args.output_path.as_ref() {
+        Some(path) => OpenOptions::new().append(true).create(true).open(path),
+        None => {
+            let date = Local::now();
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(format!("./perf_{:?}.toml", date))
+        }
+    }?;
 
     for (idx, config) in test_suites.into_iter().enumerate() {
         info!("#{:<04}: Doing attack evaluations...", idx + 1,);
@@ -186,7 +191,7 @@ fn collect_meta(
     config: &AttackConfig,
     data: &[String],
 ) -> Result<AttackMeta<String>> {
-  let size = config.size.unwrap_or(data.len()).min(data.len());
+    let size = config.size.unwrap_or(data.len()).min(data.len());
     let data_slice = &data[..size];
     let meta = match config.fse_type {
         FSEType::Dte | FSEType::Rnd => collect_meta_native(config, data_slice),

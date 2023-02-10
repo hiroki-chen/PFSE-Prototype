@@ -83,11 +83,11 @@ where
     /// this salt. The algorithm them samples a salt according to the frequency of the hashmap.
     #[deprecated]
     fn get_salt_set(&self, message: &T) -> (Vec<usize>, Vec<f64>) {
+        let mut s = 0usize;
+        let mut word_frequency = Vec::new();
+        let mut salts = Vec::new();
         let mut total = 0f64;
         let mut weights = HashMap::new();
-        let mut salts = Vec::new();
-        let mut word_frequency = Vec::new();
-        let mut s = 0usize;
 
         // The exponential distribution Exp(lambda).
         let exp_distribution = Exp::new(self.lambda as f64).unwrap();
@@ -95,28 +95,31 @@ where
         while total < 1.0 {
             s += 1;
             let weight = exp_distribution.sample(&mut OsRng);
-            weights.entry(s).or_insert(weight);
+            weights.insert(s, weight);
             total += weight;
         }
 
-        weights
-            .entry(s)
-            .and_modify(|frequency| *frequency = 1.0 - (total - *frequency));
+        weights.entry(s).and_modify(|frequency| {
+            *frequency -= total - 1.0;
+        });
 
         // Get a psedorandom permutation from message (histogram)
-        let mut prs = self
+        let mut m_prime = self
             .local_table
             .iter()
             .map(|(k, v)| (k, *v))
             .collect::<Vec<_>>();
-        prs.shuffle(&mut OsRng);
-        // fr = P_M(m_1) + ... + PM(m_{x − 1}) where m = mx (<- the current message.)
-        let idx = match prs.iter().position(|&(k, v)| k == message) {
+        m_prime.shuffle(&mut OsRng);
+        let idx = match m_prime.iter().position(|&(k, v)| k == message) {
             Some(idx) => idx,
             // Does not exists, this should be an error.
             None => return (vec![], vec![]),
         };
-        let fr = prs[..idx].iter().map(|&(k, v)| v).sum::<f64>().min(1.0);
+        // fr = P_M(m_1) + ... + PM(m_{x − 1}) where m = mx (<- the current message.)
+        let fr = match idx {
+            0 => m_prime.first().unwrap().1,
+            idx => m_prime[..idx].iter().map(|&(k, v)| v).sum::<f64>().min(1.0),
+        };
 
         let mut i = 0usize;
         let mut cdf = 0f64;
@@ -124,24 +127,29 @@ where
             cdf += *weights.get(&i).unwrap_or(&0.0);
             i += 1;
         }
-        *weights.get_mut(&i).unwrap() = cdf - fr;
-        cdf = fr;
 
+        weights
+            .entry(i)
+            .and_modify(|frequency| *frequency = cdf - fr);
+        cdf = fr;
+        i -= 1;
         let message_frequency = match self.local_table.get(message) {
             Some(&v) => v,
             None => return (vec![], vec![]),
         };
+
         while cdf < (fr + message_frequency).min(1.0) {
             let weight = *weights.get(&i).unwrap();
             word_frequency.push(weight / fr);
             salts.push(i);
+            println!("cdf = {cdf}, fr = {fr}, message_frequency = {message_frequency}, weight = {weight}, i = {i}");
             i += 1;
-            cdf += *weights.get(&i).unwrap();
+            cdf += *weights.get(&i).unwrap_or(&0.0);
         }
 
         if cdf > fr + message_frequency {
             let diff = fr + message_frequency - cdf;
-            let weight = *weights.get(&i).unwrap();
+            let weight = *weights.get(&i).unwrap_or(&0.0);
             word_frequency.push((weight - diff) / fr);
             salts.push(i);
         }
@@ -165,6 +173,15 @@ where
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
+    }
+}
+
+impl<T> SizeAllocated for ContextWRE<T>
+where
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
+{
+    fn size_allocated(&self) -> usize {
+        unimplemented!()
     }
 }
 

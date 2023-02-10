@@ -59,13 +59,19 @@ where
         self.database.name()
     }
 
-    /// Get the size of the target collection (in bytes).
+    /// Get the size of the collection.
     pub fn size(&self, collection_name: &str) -> usize {
-        self.database
-            .collection::<T>(collection_name)
-            .estimated_document_count(None)
-            .unwrap() as usize
-            * std::mem::size_of::<T>()
+        let res = self
+            .database
+            .run_command(
+                doc! {
+                  "collStats": collection_name,
+                },
+                None,
+            )
+            .unwrap();
+
+        res.get_i32("totalSize").unwrap() as usize
     }
 
     /// Search a given document in the collection.

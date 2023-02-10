@@ -201,6 +201,15 @@ where
     }
 }
 
+impl<T> SizeAllocated for ContextPFSE<T>
+where
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
+{
+    fn size_allocated(&self) -> usize {
+        self.local_table.size_allocated()
+    }
+}
+
 impl<T> BaseCrypto<T> for ContextPFSE<T>
 where
     T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + Random + SizeAllocated,
@@ -332,12 +341,24 @@ where
         // The group number.
         let mut group = 1usize;
         while i < histogram_vec.len() {
+            // Calculate \lambda * e^{-\lambda group} * k_{0}.
+            let value = partition_func(self.p_partition, group) * self.p_scale;
+            if value * self.message_num as f64 <= 1.0 {
+                self.partitions.push(Partition::new(
+                    histogram_vec[i..].to_vec(),
+                    group,
+                    histogram_vec[i..]
+                        .iter()
+                        .map(|e| e.1 as f64 / self.message_num as f64)
+                        .sum(),
+                ));
+                break;
+            }
+
             // Temporary right size of the interval [i, j].
             let mut j = i;
             // Cumulative sum, i.e. \sum_{k \in [i, j]} f_{D}(m_{k}) = sum.
             let mut sum = 0f64;
-            // Calculate \lambda * e^{-\lambda group} * k_{0}.
-            let value = partition_func(self.p_partition, group) * self.p_scale;
 
             while j < histogram_vec.len() && sum < value {
                 sum += histogram_vec[j].1 as f64 / self.message_num as f64;
@@ -351,12 +372,12 @@ where
                 // Split j-th message.
                 let message_first_part = (
                     histogram_vec[j - 1].0.clone(),
-                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).round()
+                    (histogram_vec[j - 1].1 as f64 * (1f64 - diff)).ceil()
                         as usize,
                 );
                 let message_second_part = (
                     histogram_vec[j - 1].0.clone(),
-                    (histogram_vec[j - 1].1 as f64 * diff).round() as usize,
+                    (histogram_vec[j - 1].1 as f64 * diff).floor() as usize,
                 );
 
                 histogram_vec[j - 1] = message_first_part;

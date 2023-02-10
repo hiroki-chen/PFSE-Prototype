@@ -11,6 +11,7 @@ use std::{
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use dyn_clone::{clone_box, clone_trait_object, DynClone};
+use itertools::Itertools;
 use log::{error, warn};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
@@ -283,6 +284,7 @@ where
         match self.local_table.get(message) {
             Some((_, interval)) => {
                 let mut ans = Vec::new();
+                println!("interval = {:?}", interval);
                 for i in interval.clone() {
                     let mut encoded_message = message.as_bytes().to_vec();
                     encoded_message.extend_from_slice(b"|");
@@ -352,10 +354,7 @@ where
                 // Compute message m’s frequency band.
                 let band = (*frequency as f64 / self.width).ceil() as u64;
                 let homophone = Uniform::new(0, band).sample(&mut OsRng);
-
-                if !set.iter().any(|&e| e == homophone) {
-                    set.push(homophone);
-                }
+                set.push(homophone);
 
                 // Construct m as m || t.
                 let mut encoded_message = Vec::new();
@@ -372,7 +371,7 @@ where
         match self.local_table.get(message) {
             Some((_, set)) => {
                 let mut ans = Vec::new();
-                for homophone in set {
+                for homophone in set.iter().unique() {
                     let mut encoded_message = Vec::new();
                     encoded_message.extend_from_slice(message.as_bytes());
                     encoded_message.extend_from_slice(b"|");
@@ -438,6 +437,15 @@ where
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
+    }
+}
+
+impl<T> SizeAllocated for ContextLPFSE<T>
+where
+    T: Hash + AsBytes + FromBytes + Eq + Debug + Clone + SizeAllocated,
+{
+    fn size_allocated(&self) -> usize {
+        self.encoder.size_allocated()
     }
 }
 

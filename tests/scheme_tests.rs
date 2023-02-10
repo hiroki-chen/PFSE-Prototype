@@ -137,6 +137,8 @@ mod scheme_tests {
         test_key.insert("data", "ooo");
         doc.insert("$or", vec![test_key]);
 
+        println!("{}", conn.size("test_collection"));
+
         println!(
             "{:?}",
             conn.search(doc, "test_collection")
@@ -157,7 +159,7 @@ mod scheme_tests {
         vec.shuffle(&mut OsRng);
         let messages = &vec[..100];
 
-        let mut ctx = ContextWRE::new(100);
+        let mut ctx = ContextWRE::new(10);
         ctx.key_generate();
         ctx.initialize(messages, ADDRESS, DB_NAME, true);
 

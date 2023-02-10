@@ -25,8 +25,8 @@ pub struct Args {
     #[arg(short, long, default_value_t = String::from("./config.toml"))]
     config_path: String,
     /// The output path.
-    #[arg(short, long, default_value_t = String::from("./data"))]
-    output_path: String,
+    #[arg(short, long)]
+    output_path: Option<String>,
     /// The test round.
     #[arg(short, long, default_value_t = 10)]
     round: usize,

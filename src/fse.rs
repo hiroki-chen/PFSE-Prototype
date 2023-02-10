@@ -44,7 +44,7 @@ pub trait Conn {
 
 /// This trait defines the interfaces for any cryptographic schemes.
 
-pub trait BaseCrypto<T>: Debug + Conn
+pub trait BaseCrypto<T>: Debug + Conn + SizeAllocated
 where
     T: AsBytes + FromBytes + Debug,
 {

@@ -10,12 +10,13 @@ use rand_core::{OsRng, RngCore};
 use crate::{
     db::{Connector, Data},
     fse::{AsBytes, BaseCrypto, Conn, FromBytes},
+    util::SizeAllocated,
 };
 
 #[derive(Debug, Clone)]
 pub struct ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
 {
     /// The secret key for symmetric encryption.
     key: Vec<u8>,
@@ -29,7 +30,7 @@ where
 
 impl<T> ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
 {
     pub fn new(rnd: bool) -> Self {
         Self {
@@ -54,7 +55,7 @@ where
 
 impl<T> Default for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
 {
     fn default() -> Self {
         Self::new(false)
@@ -63,16 +64,28 @@ where
 
 impl<T> Conn for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
 {
     fn get_conn(&self) -> &Connector<Data> {
         self.conn.as_ref().unwrap()
     }
 }
 
+impl<T> SizeAllocated for ContextNative<T>
+where
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
+{
+    fn size_allocated(&self) -> usize {
+        self.local_table
+            .iter()
+            .map(|(k, v)| k.size_allocated() + v.size_allocated())
+            .sum()
+    }
+}
+
 impl<T> BaseCrypto<T> for ContextNative<T>
 where
-    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone,
+    T: AsBytes + FromBytes + Debug + Eq + Hash + Clone + SizeAllocated,
 {
     fn key_generate(&mut self) {
         self.key.clear();

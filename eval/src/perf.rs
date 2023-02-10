@@ -30,6 +30,8 @@ use crate::{
 #[serde(rename_all = "snake_case")]
 struct MainResult {
     latency: String,
+    client_storage: usize,
+    server_storage: usize,
     column_name: String,
 }
 
@@ -47,17 +49,22 @@ pub fn execute_perf(args: &Args) -> Result<()> {
     let mut content = Vec::new();
     file.read_to_end(&mut content)?;
 
-    let date = Local::now();
     let mut test_suites =
         toml::from_slice::<HashMap<String, Vec<PerfConfig>>>(&content)?
             .remove("test_suites")
             .unwrap();
     test_suites.truncate(args.suite_num.unwrap_or(test_suites.len()));
 
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(format!("{}/perf_{:?}.toml", args.output_path, date))?;
+    let mut file = match args.output_path.as_ref() {
+        Some(path) => OpenOptions::new().append(true).create(true).open(path),
+        None => {
+            let date = Local::now();
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(format!("./perf_{:?}.toml", date))
+        }
+    }?;
 
     for (idx, config) in test_suites.into_iter().enumerate() {
         info!("#{:<04}: Doing perf evaluations...", idx + 1,);
@@ -102,7 +109,7 @@ pub fn execute_perf(args: &Args) -> Result<()> {
 
         info!("Dataset read finished.");
 
-        for (idx, &latency) in
+        for (idx, &res) in
             do_perf(args.round, &config, &dataset)?.iter().enumerate()
         {
             let column_name = match config.dataset_type {
@@ -121,7 +128,9 @@ pub fn execute_perf(args: &Args) -> Result<()> {
             let result = PerfResult {
                 config: config.clone(),
                 result: MainResult {
-                    latency: format!("{:?}", latency),
+                    latency: format!("{:?}", res.0),
+                    server_storage: res.1,
+                    client_storage: res.2,
                     column_name,
                 },
             };
@@ -141,32 +150,44 @@ fn do_perf(
     round: usize,
     config: &PerfConfig,
     dataset: &[Vec<String>],
-) -> Result<Vec<Duration>> {
+) -> Result<Vec<(Duration, usize, usize)>> {
     let mut res = Vec::new();
 
     for data in dataset.iter() {
         let mut duration = Duration::new(0, 0);
+        let mut server_storage = 0usize;
+        let mut client_storage = 0usize;
         for idx in 1..=round {
             info!("Round #{:<04} started.", idx);
 
             let size = config.size.unwrap_or(data.len()).min(data.len());
             let data_slice = &data[..size];
-            duration += match config.perf_type {
-                PerfType::Init => do_init(config, data_slice),
-                PerfType::Insert => do_insert(config, data_slice),
-                PerfType::Query => do_query(config, data_slice),
-            }?;
+            let result = match config.perf_type {
+                PerfType::Init => (do_init(config, data_slice), 0, 0),
+                PerfType::Query => (do_query(config, data_slice), 0, 0),
+                PerfType::Insert => {
+                    let ans =
+                        do_insert_and_get_sizes(config, data_slice).unwrap();
+                    (Ok(ans.0), ans.1, ans.2)
+                }
+            };
+
+            duration += result.0.unwrap();
+            server_storage += result.1;
+            client_storage += result.2;
 
             info!("Round #{:<04} finished.", idx);
         }
         duration /= round as u32;
+        server_storage /= round as usize;
+        client_storage /= round as usize;
 
         warn!(
             "[+] Perf {:?} finished against {:?}. Estimated latency is {:?}.",
             config.perf_type, config.fse_type, duration
         );
 
-        res.push(duration);
+        res.push((duration, server_storage, client_storage));
     }
 
     Ok(res)
@@ -178,21 +199,26 @@ fn do_init(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
-        FSEType::Wre => todo!(),
+        FSEType::Wre => unimplemented!(),
     }?;
     Ok(instant.elapsed())
 }
 
-fn do_insert(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
+fn do_insert_and_get_sizes(
+    config: &PerfConfig,
+    dataset: &[String],
+) -> Result<(Duration, usize, usize)> {
+    let instant = Instant::now();
     let (data, ctx) = match config.fse_type {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
-        FSEType::Wre => todo!(),
+        FSEType::Wre => unimplemented!(),
     }?;
-    let instant = Instant::now();
     insert(ctx.get_conn(), &data, &format!("{:?}", config.fse_type))?;
-    Ok(instant.elapsed())
+    let server_storage = ctx.get_conn().size(&format!("{:?}", config.fse_type));
+    let client_storage = ctx.size_allocated();
+    Ok((instant.elapsed(), server_storage, client_storage))
 }
 
 fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
@@ -200,7 +226,7 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         FSEType::Dte | FSEType::Rnd => init_native(config, dataset),
         FSEType::LpfseIhbe | FSEType::LpfseBhe => init_lpfse(config, dataset),
         FSEType::Pfse => init_pfse(config, dataset),
-        FSEType::Wre => todo!(),
+        FSEType::Wre => unimplemented!(),
     }?;
     let name = format!("{:?}", config.fse_type);
     insert(ctx.get_conn(), &data, &name)?;
