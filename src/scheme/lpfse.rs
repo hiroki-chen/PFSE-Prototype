@@ -12,7 +12,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use dyn_clone::{clone_box, clone_trait_object, DynClone};
 use itertools::Itertools;
-use log::{error, warn};
+use log::{error, warn, debug};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
@@ -284,7 +284,7 @@ where
         match self.local_table.get(message) {
             Some((_, interval)) => {
                 let mut ans = Vec::new();
-                println!("interval = {:?}", interval);
+                debug!("interval = {:?}", interval);
                 for i in interval.clone() {
                     let mut encoded_message = message.as_bytes().to_vec();
                     encoded_message.extend_from_slice(b"|");

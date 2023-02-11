@@ -132,5 +132,5 @@ where
 
 /// A function used in the partition phase. It takes the form `f(x) = \lambda e^{-\lambda x}`.
 pub fn exponential(param: f64, x: usize) -> f64 {
-    param * E.powf(-param * x as f64)
+    param * E.powf(-param * (x - 1) as f64)
 }
