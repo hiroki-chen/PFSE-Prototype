@@ -2,6 +2,8 @@
 
 use std::{f64::consts::E, fmt::Debug, fs::File, io::Write};
 
+use itertools::Itertools;
+use log::{debug, error};
 use mongodb::bson::Document;
 
 use crate::{
@@ -72,7 +74,9 @@ where
         ciphertexts: Vec<Vec<u8>>,
         name: &str,
     ) -> Option<Vec<T>> {
-        let encrypted_message = ciphertexts
+        debug!("Generated {} tokens.", ciphertexts.len());
+
+        let query_result = ciphertexts
             .into_iter()
             .map(|e| {
                 let mut document = Document::new();
@@ -82,23 +86,32 @@ where
             })
             .collect::<Vec<_>>();
 
-        let mut filter = Document::new();
-        filter.insert("$or", encrypted_message);
+        let mut res = Vec::new();
+        for encrypted_message in query_result.chunks(4096) {
+            let mut filter = Document::new();
+            filter.insert("$or", encrypted_message);
 
-        let data = match self.get_conn().search(filter, name) {
-            Ok(cursor) => cursor,
-            Err(_) => return None,
+            let data = match self.get_conn().search(filter, name) {
+                Ok(cursor) => cursor,
+                Err(e) => {
+                    error!("Error: {:?}", e);
+                    return None;
+                }
+            }
+            .into_iter()
+            .map(|data| {
+                let message_bytes = self
+                    .decrypt(data.unwrap().data.as_bytes())
+                    .unwrap_or_default();
+                T::from_bytes(&message_bytes)
+            })
+            .collect::<Vec<_>>();
+
+            res.push(data);
         }
-        .into_iter()
-        .map(|data| {
-            let message_bytes = self
-                .decrypt(data.unwrap().data.as_bytes())
-                .unwrap_or_default();
-            T::from_bytes(&message_bytes)
-        })
-        .collect::<Vec<_>>();
+        debug!("Matched document: {}.", res.len());
 
-        Some(data)
+        Some(res.into_iter().flatten().collect())
     }
 
     /// Search a given message `T` from the remote server.
@@ -107,6 +120,7 @@ where
             Some(v) => v,
             None => return None,
         };
+        debug!("Ciphertext size = {}", ciphertexts.len());
         self.search_impl(ciphertexts, name)
     }
 }

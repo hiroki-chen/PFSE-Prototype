@@ -237,7 +237,7 @@ where
         };
 
         for &(index, size, cnt) in value.iter() {
-            println!("{index}, {size}, {cnt}");
+            debug!("{index}, {size}, {cnt}");
             for j in 0..size {
                 let nonce = Nonce::from_slice(&[0u8; 12usize]);
                 let mut message_vec = message.as_bytes().to_vec();

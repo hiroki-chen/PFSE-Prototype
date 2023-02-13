@@ -5,6 +5,7 @@ use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
+use log::debug;
 use rand_core::{OsRng, RngCore};
 
 use crate::{
@@ -189,10 +190,12 @@ where
                         .encode(ciphertext)
                         .into_bytes()
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            debug!("Ciphertext size = {}", ciphertexts.len());
             self.search_impl(ciphertexts, name)
         } else {
             let ciphertext = self.encrypt(message).unwrap();
+            debug!("Ciphertext size = {}", ciphertext.len());
             self.search_impl(ciphertext, name)
         }
     }

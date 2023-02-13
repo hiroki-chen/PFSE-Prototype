@@ -161,6 +161,8 @@ fn do_perf(
             info!("Round #{:<04} started.", idx);
 
             let size = config.size.unwrap_or(data.len()).min(data.len());
+            let mut data = data.clone();
+            data.shuffle(&mut OsRng);
             let data_slice = &data[..size];
             let result = match config.perf_type {
                 PerfType::Init => (do_init(config, data_slice), 0, 0),
@@ -232,11 +234,13 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
     insert(ctx.get_conn(), &data, &name)?;
 
     let instant = Instant::now();
-    for _ in 0..10 {
-        let idx = Uniform::new(0, dataset.len()).sample(&mut OsRng);
+    let distribution = Uniform::new(0, dataset.len());
+    for i in 0..100 {
+        let idx = distribution.sample(&mut OsRng);
+        debug!("Query round {:<4?}: choosing {}", i, idx);
         query(ctx.as_mut(), &dataset[idx], &name)?;
     }
-    Ok(instant.elapsed() / 10)
+    Ok(instant.elapsed() / 100)
 }
 
 fn init_native(
