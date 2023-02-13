@@ -237,9 +237,9 @@ where
         let n = messages.len();
 
         // f_{D}(m_1).
-        let most_frequent = histogram_vec.first().unwrap().1 as f64 / n as f64;
+        let least_frequent = histogram_vec.last().unwrap().1 as f64 / n as f64;
         let log_inner = f64::sqrt(n as f64)
-            / (2.0 * f64::sqrt(2.0 * PI) * advantage * most_frequent);
+            / (2.0 * f64::sqrt(2.0 * PI) * advantage * least_frequent);
         let r = log_inner.log2().ceil();
         let pow2_r = 2f64.powf(r);
 

@@ -4,7 +4,7 @@ use std::{collections::HashMap, f64::consts::E, fmt::Debug, hash::Hash};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
-use log::warn;
+use log::{debug, warn};
 use rand_core::OsRng;
 
 use crate::{
@@ -237,10 +237,13 @@ where
         };
 
         for &(index, size, cnt) in value.iter() {
+            println!("{index}, {size}, {cnt}");
             for j in 0..size {
                 let nonce = Nonce::from_slice(&[0u8; 12usize]);
                 let mut message_vec = message.as_bytes().to_vec();
+                message_vec.extend_from_slice(b"|");
                 message_vec.extend_from_slice(&index.to_le_bytes());
+                message_vec.extend_from_slice(b"|");
                 message_vec.extend_from_slice(&j.to_le_bytes());
                 let ciphertext =
                     match aes.encrypt(nonce, message_vec.as_slice()) {
@@ -298,7 +301,8 @@ where
                     return None;
                 }
             };
-        plaintext.truncate(plaintext.len() - std::mem::size_of::<usize>() * 2);
+        plaintext
+            .truncate(plaintext.len() - std::mem::size_of::<usize>() * 2 - 2);
 
         Some(plaintext)
     }
@@ -336,6 +340,7 @@ where
             let histogram = build_histogram(input);
             build_histogram_vec(&histogram)
         };
+        debug!("Histogram: {:?}", histogram_vec);
         // Partition this according to the function f(x).
         let mut i = 0usize;
         // The group number.
@@ -443,7 +448,7 @@ where
             for (message, cnt) in partition.inner.iter() {
                 let size = (k_prime_one * *cnt as f64).ceil() as usize;
                 let cur = self.local_table.entry(message.clone()).or_default();
-                cur.push((index, size, k_prime_one_reciprocal.ceil() as usize));
+                cur.push((index, size, k as usize));
                 sum += size;
             }
 
@@ -482,15 +487,20 @@ where
     fn smooth(&mut self) -> Vec<Vec<u8>> {
         let mut ciphertexts = Vec::new();
 
+        let mut visited = HashMap::new();
         // Temporarily clone this thing to prevent multiple borrows to `self`.
         for partition in self.partitions.clone().into_iter() {
             for (message, cnt) in partition.inner.iter() {
-                if let Some(mut c) = self.encrypt(message) {
-                    ciphertexts.append(&mut c);
-                } else {
-                    let mut dummies =
-                        vec![message.clone().as_bytes().to_vec(); *cnt];
-                    ciphertexts.append(&mut dummies);
+                if visited.get(message).is_none() {
+                    if let Some(mut c) = self.encrypt(message) {
+                        ciphertexts.append(&mut c);
+                    } else {
+                        let mut dummies =
+                            vec![message.clone().as_bytes().to_vec(); *cnt];
+                        ciphertexts.append(&mut dummies);
+                    }
+
+                    visited.insert(message.clone(), true);
                 }
             }
         }
