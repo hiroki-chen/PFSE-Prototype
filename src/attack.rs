@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
+use array_tool::vec::Intersect;
 use log::error;
 use pathfinding::{
     kuhn_munkres::kuhn_munkres_min,
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     fse::{HistType, Random, ValueType},
-    util::{build_histogram, build_histogram_vec, intersect, pad_auxiliary},
+    util::{build_histogram, build_histogram_vec, pad_auxiliary},
 };
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -268,7 +269,9 @@ where
         for (index, assignment) in self.assignment.as_ref().unwrap().iter() {
             let (current_message, _, count) = &auxiliary.get(*index).unwrap();
             let correct_ciphertexts = correct.get(current_message).unwrap();
-            let common = intersect(assignment, correct_ciphertexts);
+            log::info!("finding intersection...");
+            let common = assignment.intersect(correct_ciphertexts.to_vec());
+            log::info!("finding intersection ok...");
 
             // Find the weight of the message.
             let message_weight = *count as f64 / message_num as f64;

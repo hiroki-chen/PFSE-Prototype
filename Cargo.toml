@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 aes-gcm = "0.10.1"
+array_tool = "1.0.3"
 base64 = "0.21.0"
 criterion = "0.4.0"
 csv = "1.1.6"

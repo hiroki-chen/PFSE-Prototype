@@ -12,7 +12,7 @@ use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
 use dyn_clone::{clone_box, clone_trait_object, DynClone};
 use itertools::Itertools;
-use log::{error, warn, debug};
+use log::{debug, error, warn};
 use rand::{distributions::Uniform, prelude::Distribution};
 use rand_core::OsRng;
 
@@ -105,6 +105,8 @@ where
     /// The temporary frequency table.
     /// T -> <count, set>
     local_table: HashMap<T, (usize, Vec<u64>)>,
+    /// The message number.
+    message_num: usize,
     /// A dummy data that consumes `T`.
     _marker: PhantomData<T>,
 }
@@ -174,6 +176,7 @@ where
             length: 0,
             width: 0f64,
             local_table: HashMap::new(),
+            message_num: 0usize,
             _marker: PhantomData,
         }
     }
@@ -330,9 +333,11 @@ where
             .map(|(_, v)| *v)
             .unwrap();
 
-        let n = messages.len() as f64;
-        let log2 =
-            f64::log2(n / ((2.0 * advantage).powf(2.0) * PI)).ceil() as usize;
+        self.message_num = messages.len();
+        let log2 = f64::log2(
+            self.message_num as f64 / ((2.0 * advantage).powf(2.0) * PI),
+        )
+        .ceil() as usize;
         self.length = match log2.checked_sub(1) {
             Some(v) => v,
             None => {
@@ -340,7 +345,8 @@ where
                 return;
             }
         };
-        self.width = most_frequent as f64 / (n * 2f64.powf(self.length as f64));
+        self.width = most_frequent as f64
+            / (self.message_num as f64 * 2f64.powf(self.length as f64));
 
         self.local_table = histogram
             .into_iter()
@@ -352,7 +358,9 @@ where
         match self.local_table.get_mut(message) {
             Some((frequency, set)) => {
                 // Compute message m’s frequency band.
-                let band = (*frequency as f64 / self.width).ceil() as u64;
+                let band = (*frequency as f64
+                    / (self.width * self.message_num as f64))
+                    .ceil() as u64;
                 let homophone = Uniform::new(0, band).sample(&mut OsRng);
                 set.push(homophone);
 
@@ -369,9 +377,13 @@ where
 
     fn encode_all(&self, message: &T) -> Option<Vec<Vec<u8>>> {
         match self.local_table.get(message) {
-            Some((_, set)) => {
+            Some((frequency, set)) => {
+                // Compute message m’s frequency band.
+                let band = (*frequency as f64
+                    / (self.width * self.message_num as f64))
+                    .ceil() as u64;
                 let mut ans = Vec::new();
-                for homophone in set.iter().unique() {
+                for homophone in 0..band {
                     let mut encoded_message = Vec::new();
                     encoded_message.extend_from_slice(message.as_bytes());
                     encoded_message.extend_from_slice(b"|");

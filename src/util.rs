@@ -169,24 +169,6 @@ pub fn pad_auxiliary<T>(
     }
 }
 
-/// Compute the intersection of two arrays.
-#[cfg(feature = "attack")]
-pub fn intersect<T>(lhs: &[T], rhs: &[T]) -> Vec<T>
-where
-    T: Eq + Clone,
-{
-    let mut intersection = Vec::new();
-
-    // A very naive O(m * n) algorithm.
-    for item in lhs.iter() {
-        if rhs.iter().any(|e| e == item) {
-            intersection.push(item.clone());
-        }
-    }
-
-    intersection
-}
-
 /// For attacker only. This function computes the weight of each ciphertext in their **own** ciphertext set.
 #[cfg(feature = "attack")]
 #[deprecated]
