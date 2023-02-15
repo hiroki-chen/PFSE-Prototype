@@ -234,11 +234,15 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
     insert(ctx.get_conn(), &data, &name)?;
 
     let instant = Instant::now();
-    let distribution = Uniform::new(0, dataset.len());
+    let histogram = {
+        let histogram = fse::util::build_histogram(dataset);
+        fse::util::build_histogram_vec(&histogram)
+    };
+    let distribution = Uniform::new(0, histogram.len());
     for i in 0..100 {
         let idx = distribution.sample(&mut OsRng);
         debug!("Query round {:<4?}: choosing {}", i, idx);
-        query(ctx.as_mut(), &dataset[idx], &name)?;
+        query(ctx.as_mut(), &histogram[idx].0, &name)?;
     }
     Ok(instant.elapsed() / 100)
 }
