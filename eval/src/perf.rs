@@ -239,12 +239,13 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
         fse::util::build_histogram_vec(&histogram)
     };
     let distribution = Uniform::new(0, histogram.len());
-    for i in 0..100 {
+    let query_number = config.query_number.unwrap_or(100);
+    for i in 0..query_number {
         let idx = distribution.sample(&mut OsRng);
         debug!("Query round {:<4?}: choosing {}", i, idx);
         query(ctx.as_mut(), &histogram[idx].0, &name)?;
     }
-    Ok(instant.elapsed() / 100)
+    Ok(instant.elapsed() / query_number as u32)
 }
 
 fn init_native(

@@ -57,6 +57,7 @@ pub struct PerfConfig {
     /// Format: [<domain>, <dist_param>]
     pub data_params: Option<Vec<f64>>,
     pub size: Option<usize>,
+    pub query_number: Option<usize>,
     pub addr: Option<String>,
     pub db_name: Option<String>,
     pub drop: bool,
