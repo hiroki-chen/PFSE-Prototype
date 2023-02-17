@@ -438,17 +438,16 @@ where
                 .sum::<f64>();
             let cur_func =
                 (self.partition_func.unwrap())(self.p_partition, index + 1);
-            let k_prime_one = 1.0 / k;
+            let k_prime_one = cur_func / k;
             let k_prime_one_reciprocal = 1.0 / (k_prime_one);
-            let n_i =
-                ((n * f_i) / (self.p_advantage * cur_func)).ceil() as usize;
+            let n_i = ((n * f_i) / self.p_advantage).ceil() as usize;
 
             let mut sum = 0;
 
             for (message, cnt) in partition.inner.iter() {
                 let size = (k_prime_one * *cnt as f64).ceil() as usize;
                 let cur = self.local_table.entry(message.clone()).or_default();
-                cur.push((index, size, k as usize));
+                cur.push((index, size, k_prime_one_reciprocal.round() as usize));
                 sum += size;
             }
 

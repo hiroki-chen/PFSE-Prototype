@@ -242,8 +242,13 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
     let query_number = config.query_number.unwrap_or(100);
     for i in 0..query_number {
         let idx = distribution.sample(&mut OsRng);
-        debug!("Query round {:<4?}: choosing {}", i, idx);
         query(ctx.as_mut(), &histogram[idx].0, &name)?;
+        debug!(
+            "Query round {:<4?}: choosing {}; elapsed time {:?}",
+            i,
+            idx,
+            instant.elapsed()
+        );
     }
     Ok(instant.elapsed() / query_number as u32)
 }
