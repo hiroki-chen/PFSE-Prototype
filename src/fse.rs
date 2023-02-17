@@ -100,18 +100,18 @@ where
             }
             .into_iter()
             .map(|data| {
-                let message_bytes = self
-                    .decrypt(data.unwrap().data.as_bytes())
-                    .unwrap_or_default();
+                let message_bytes =
+                    self.decrypt(data.unwrap().data.as_bytes()).unwrap();
                 T::from_bytes(&message_bytes)
             })
             .collect::<Vec<_>>();
 
             res.push(data);
         }
+        let res = res.into_iter().flatten().collect::<Vec<_>>();
         debug!("Matched document: {}.", res.len());
 
-        Some(res.into_iter().flatten().collect())
+        Some(res)
     }
 
     /// Search a given message `T` from the remote server.

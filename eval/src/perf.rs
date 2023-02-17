@@ -233,13 +233,14 @@ fn do_query(config: &PerfConfig, dataset: &[String]) -> Result<Duration> {
     let name = format!("{:?}", config.fse_type);
     insert(ctx.get_conn(), &data, &name)?;
 
-    let instant = Instant::now();
     let histogram = {
         let histogram = fse::util::build_histogram(dataset);
         fse::util::build_histogram_vec(&histogram)
     };
     let distribution = Uniform::new(0, histogram.len());
     let query_number = config.query_number.unwrap_or(100);
+
+    let instant = Instant::now();
     for i in 0..query_number {
         let idx = distribution.sample(&mut OsRng);
         query(ctx.as_mut(), &histogram[idx].0, &name)?;

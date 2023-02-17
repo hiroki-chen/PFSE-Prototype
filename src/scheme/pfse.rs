@@ -169,6 +169,62 @@ where
             self.conn = Some(conn);
         }
     }
+
+    /// Returns all unique ciphertexts.
+    /// Note this interface with `repeat = false` should only be invoked by `search => encrypt`.
+    fn encrypt_impl(&self, message: &T, repeat: bool) -> Option<Vec<Vec<u8>>> {
+        let value = match self.local_table.get(message) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        let mut ciphertexts = Vec::new();
+        let aes = match Aes256Gcm::new_from_slice(&self.key) {
+            Ok(aes) => aes,
+            Err(e) => {
+                println!(
+                    "[-] Error constructing the AES context due to {:?}.",
+                    e.to_string()
+                );
+                return None;
+            }
+        };
+
+        for &(index, size, cnt) in value.iter() {
+            debug!("{index}, {size}, {cnt}");
+            for j in 0..size {
+                let nonce = Nonce::from_slice(&[0u8; 12usize]);
+                let mut message_vec = message.as_bytes().to_vec();
+                message_vec.extend_from_slice(b"|");
+                message_vec.extend_from_slice(&index.to_le_bytes());
+                message_vec.extend_from_slice(b"|");
+                message_vec.extend_from_slice(&j.to_le_bytes());
+                let ciphertext =
+                    match aes.encrypt(nonce, message_vec.as_slice()) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!(
+                        "[-] Error when encrypting the message due to {:?}",
+                        e
+                    );
+                            return None;
+                        }
+                    };
+                let encoded_ciphertext = general_purpose::STANDARD_NO_PAD
+                    .encode(ciphertext)
+                    .into_bytes();
+
+                if repeat {
+                    let mut ciphertext_vec = vec![encoded_ciphertext; cnt];
+                    ciphertexts.append(&mut ciphertext_vec);
+                } else {
+                    ciphertexts.push(encoded_ciphertext);
+                }
+            }
+        }
+
+        Some(ciphertexts)
+    }
 }
 
 impl<T> Conn for ContextPFSE<T>
@@ -219,52 +275,7 @@ where
     }
 
     fn encrypt(&mut self, message: &T) -> Option<Vec<Vec<u8>>> {
-        let value = match self.local_table.get(message) {
-            Some(v) => v,
-            None => return None,
-        };
-
-        let mut ciphertexts = Vec::new();
-        let aes = match Aes256Gcm::new_from_slice(&self.key) {
-            Ok(aes) => aes,
-            Err(e) => {
-                println!(
-                    "[-] Error constructing the AES context due to {:?}.",
-                    e.to_string()
-                );
-                return None;
-            }
-        };
-
-        for &(index, size, cnt) in value.iter() {
-            debug!("{index}, {size}, {cnt}");
-            for j in 0..size {
-                let nonce = Nonce::from_slice(&[0u8; 12usize]);
-                let mut message_vec = message.as_bytes().to_vec();
-                message_vec.extend_from_slice(b"|");
-                message_vec.extend_from_slice(&index.to_le_bytes());
-                message_vec.extend_from_slice(b"|");
-                message_vec.extend_from_slice(&j.to_le_bytes());
-                let ciphertext =
-                    match aes.encrypt(nonce, message_vec.as_slice()) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            println!(
-                            "[-] Error when encrypting the message due to {:?}",
-                            e
-                        );
-                            return None;
-                        }
-                    };
-                let encoded_ciphertext = general_purpose::STANDARD_NO_PAD
-                    .encode(ciphertext)
-                    .into_bytes();
-                let mut ciphertext_vec = vec![encoded_ciphertext; cnt];
-                ciphertexts.append(&mut ciphertext_vec);
-            }
-        }
-
-        Some(ciphertexts)
+        self.encrypt_impl(message, false)
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Option<Vec<u8>> {
@@ -447,7 +458,11 @@ where
             for (message, cnt) in partition.inner.iter() {
                 let size = (k_prime_one * *cnt as f64).ceil() as usize;
                 let cur = self.local_table.entry(message.clone()).or_default();
-                cur.push((index, size, k_prime_one_reciprocal.round() as usize));
+                cur.push((
+                    index,
+                    size,
+                    k_prime_one_reciprocal.round() as usize,
+                ));
                 sum += size;
             }
 
