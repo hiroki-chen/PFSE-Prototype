@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit, Nonce};
 use base64::{engine::general_purpose, Engine};
-use log::debug;
+use log::{debug, error};
 use rand_core::{OsRng, RngCore};
 
 use crate::{
@@ -97,7 +97,7 @@ where
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                println!(
+                error!(
                     "[-] Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
@@ -121,10 +121,7 @@ where
         let ciphertext = match aes.encrypt(&nonce, message.as_bytes()) {
             Ok(v) => v,
             Err(e) => {
-                println!(
-                    "[-] Error when encrypting the message due to {:?}",
-                    e
-                );
+                error!("[-] Error when encrypting the message due to {:?}", e);
                 return None;
             }
         };
@@ -138,19 +135,21 @@ where
         let aes = match Aes256Gcm::new_from_slice(&self.key) {
             Ok(aes) => aes,
             Err(e) => {
-                println!(
+                error!(
                     "[-] Error constructing the AES context due to {:?}.",
                     e.to_string()
                 );
                 return None;
             }
         };
+
+        // HACK: We do not 'literally' decrypt the message as the management of nonces is complex.
         let nonce = Nonce::from_slice(&[0u8; 12]);
         let decoded_ciphertext =
             match general_purpose::STANDARD_NO_PAD.decode(ciphertext) {
                 Ok(v) => v,
                 Err(e) => {
-                    println!(
+                    error!(
                         "[-] Error decoding the base64 string due to {:?}.",
                         e.to_string()
                     );

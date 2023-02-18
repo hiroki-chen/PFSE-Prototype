@@ -100,8 +100,9 @@ where
             }
             .into_iter()
             .map(|data| {
-                let message_bytes =
-                    self.decrypt(data.unwrap().data.as_bytes()).unwrap();
+                let message_bytes = self
+                    .decrypt(data.unwrap().data.as_bytes())
+                    .unwrap_or_default();
                 T::from_bytes(&message_bytes)
             })
             .collect::<Vec<_>>();
