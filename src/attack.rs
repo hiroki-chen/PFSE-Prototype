@@ -3,7 +3,6 @@
 
 use std::{collections::HashMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
-use array_tool::vec::Intersect;
 use log::error;
 use pathfinding::{
     kuhn_munkres::kuhn_munkres_min,
@@ -13,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     fse::{HistType, Random, ValueType},
-    util::{build_histogram, build_histogram_vec, pad_auxiliary},
+    util::{self, build_histogram, build_histogram_vec, pad_auxiliary},
 };
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -266,12 +265,23 @@ where
         ciphertexts: &[HistType<Vec<u8>>],
     ) -> f64 {
         let mut sum = 0f64;
+
+        log::debug!(
+            "There are {} assignments.",
+            self.assignment.as_ref().unwrap().len()
+        );
         for (index, assignment) in self.assignment.as_ref().unwrap().iter() {
             let (current_message, _, count) = &auxiliary.get(*index).unwrap();
             let correct_ciphertexts = correct.get(current_message).unwrap();
-            log::info!("finding intersection...");
-            let common = assignment.intersect(correct_ciphertexts.to_vec());
-            log::info!("finding intersection ok...");
+
+            log::debug!(
+                "Round {:<4?}: finding intersection... lhs = {}, rhs = {}",
+                index,
+                assignment.len(),
+                correct_ciphertexts.len()
+            );
+            let common = util::intersect(assignment, &correct_ciphertexts);
+            log::debug!("Round {:<4?}: finding intersection ok...", index);
 
             // Find the weight of the message.
             let message_weight = *count as f64 / message_num as f64;

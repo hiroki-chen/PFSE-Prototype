@@ -8,6 +8,7 @@ use std::{
     io::{BufRead, BufReader, Write},
 };
 
+use array_tool::vec::Intersect;
 use csv::{Reader, ReaderBuilder};
 use log::error;
 use rand_core::OsRng;
@@ -191,6 +192,35 @@ where
     }
 
     weight_map
+}
+
+/// Compute the intersection of two vectors.
+pub fn intersect<T>(lhs: &[T], rhs: &[T]) -> Vec<T>
+where
+    T: Ord + Eq + Clone,
+{
+    // Sort these two arrays first.
+    let lhs_vec = {
+        let mut lhs_vec = lhs.to_vec();
+        lhs_vec.sort();
+        lhs_vec
+    };
+    let rhs_vec = {
+        let mut rhs_vec = lhs.to_vec();
+        rhs_vec.sort();
+        rhs_vec
+    };
+
+    // lhs_vec.intersect(rhs_vec)
+    let mut ans = vec![];
+    // Double pointers to accelerate finding.
+    let mut i = 0usize;
+    let mut j = 0usize;
+    while i < lhs_vec.len() {
+        // todo.
+    }
+
+    ans
 }
 
 /// Generate a synthetic dataset from a normal distribution for testing.
