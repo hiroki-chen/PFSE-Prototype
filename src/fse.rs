@@ -121,7 +121,11 @@ where
             Some(v) => v,
             None => return None,
         };
-        debug!("Ciphertext size = {}", ciphertexts.len());
+        debug!(
+            "Searching {:?}: Ciphertext size = {}",
+            message,
+            ciphertexts.len()
+        );
         self.search_impl(ciphertexts, name)
     }
 }

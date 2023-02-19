@@ -423,6 +423,8 @@ where
             group += 1;
             i = j;
         }
+
+        debug!("Partition finished. Partitions: {:?}", self.partitions);
     }
 
     fn transform(&mut self) {
@@ -496,6 +498,8 @@ where
                     .push((dummy, (1.0 / k_prime_one).ceil() as usize));
             }
         }
+
+        debug!("Transform finished. Local table is {:?}", self.local_table);
     }
 
     fn smooth(&mut self) -> Vec<Vec<u8>> {
@@ -506,7 +510,7 @@ where
         for partition in self.partitions.clone().into_iter() {
             for (message, cnt) in partition.inner.iter() {
                 if visited.get(message).is_none() {
-                    if let Some(mut c) = self.encrypt(message) {
+                    if let Some(mut c) = self.encrypt_impl(message, true) {
                         ciphertexts.append(&mut c);
                     } else {
                         let mut dummies =
