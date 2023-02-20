@@ -281,7 +281,11 @@ where
                 correct_ciphertexts.len()
             );
             let common = util::intersect(assignment, &correct_ciphertexts);
-            log::debug!("Round {:<4?}: finding intersection ok...", index);
+            log::debug!(
+                "Round {:<4?}: finding intersection ok... common = {}",
+                index,
+                common.len(),
+            );
 
             // Find the weight of the message.
             let message_weight = *count as f64 / message_num as f64;

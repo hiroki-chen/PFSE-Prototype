@@ -195,29 +195,45 @@ where
 }
 
 /// Compute the intersection of two vectors.
+///
+/// The reason why we do not want to use `array_tool::vec::Intersect` is that it is `slow` because
+/// it does not apply any optimization on sortable elements. If the elements in the vector implement
+/// [`std::cmp::PartialOrd`] and [`std::cmp::PartialEq`], we can compute the intersection in O(nlogn)
+/// time while the naive algorithm requires O(mn) time, where `m, n` denote the lengths of the vectors.
 pub fn intersect<T>(lhs: &[T], rhs: &[T]) -> Vec<T>
 where
-    T: Ord + Eq + Clone,
+    T: Ord + Eq + Clone + Debug,
 {
-    // Sort these two arrays first.
+    // Sort these two arrays first. => O(nlogn)
     let lhs_vec = {
         let mut lhs_vec = lhs.to_vec();
         lhs_vec.sort();
         lhs_vec
     };
     let rhs_vec = {
-        let mut rhs_vec = lhs.to_vec();
+        let mut rhs_vec = rhs.to_vec();
         rhs_vec.sort();
         rhs_vec
     };
 
-    // lhs_vec.intersect(rhs_vec)
     let mut ans = vec![];
-    // Double pointers to accelerate finding.
+    // Double pointers to accelerate finding => O(n)
     let mut i = 0usize;
     let mut j = 0usize;
-    while i < lhs_vec.len() {
-        // todo.
+    while i < lhs_vec.len() && j < rhs_vec.len() {
+        if lhs_vec[i] == rhs_vec[j] {
+            ans.push(lhs_vec[i].clone());
+            i += 1;
+            j += 1;
+        } else if lhs_vec[i] > rhs_vec[j] {
+            while j < rhs_vec.len() && lhs_vec[i] > rhs_vec[j] {
+                j += 1;
+            }
+        } else {
+            while i < lhs_vec.len() && lhs_vec[i] < rhs_vec[j] {
+                i += 1;
+            }
+        }
     }
 
     ans
